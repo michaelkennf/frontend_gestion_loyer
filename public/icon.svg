@@ -1,0 +1,27 @@
+<svg width="180" height="180" viewBox="0 0 180 180" xmlns="http://www.w3.org/2000/svg" fill="none">
+  <rect x="0" y="0" width="180" height="180" rx="37" fill="#0B1220" />
+  <!-- House + money icon (simple, no Vercel/v0 assets) -->
+  <path
+    d="M52 84.5L90 53L128 84.5V140C128 146.627 122.627 152 116 152H64C57.373 152 52 146.627 52 140V84.5Z"
+    fill="#FFFFFF"
+    opacity="0.95"
+  />
+  <path
+    d="M71 120V145C71 147.761 73.2386 150 76 150H104C106.761 150 109 147.761 109 145V120"
+    stroke="#0B1220"
+    stroke-width="6"
+    stroke-linecap="round"
+  />
+  <circle cx="118" cy="106" r="16" fill="#0B1220" />
+  <path
+    d="M118 95V118"
+    stroke="#FFFFFF"
+    stroke-width="4.5"
+    stroke-linecap="round"
+  />
+  <path
+    d="M108 106C108 100.477 112.477 96 118 96C123.523 96 128 100.477 128 106C128 111.523 123.523 116 118 116C112.477 116 108 111.523 108 106Z"
+    fill="#FFFFFF"
+    opacity="0.12"
+  />
+</svg>
