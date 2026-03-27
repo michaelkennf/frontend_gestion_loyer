@@ -13,6 +13,12 @@ export function middleware(req: NextRequest) {
   if (!isPublic && !isAuthed) {
     return NextResponse.redirect(new URL("/login", req.url));
   }
+  if (role === "ADMIN") {
+    const allowedForAdmin = pathname.startsWith("/admin-users") || pathname.startsWith("/settings");
+    if (!isPublic && !allowedForAdmin) {
+      return NextResponse.redirect(new URL("/admin-users", req.url));
+    }
+  }
   if (pathname.startsWith("/admin-users") && role !== "ADMIN") {
     return NextResponse.redirect(new URL("/dashboard", req.url));
   }

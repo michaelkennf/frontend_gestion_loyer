@@ -25,19 +25,19 @@ import { getSession, logout, SessionUser } from "@/lib/auth";
 import { toast } from "sonner";
 
 const navItems = [
-  { href: "/dashboard", label: "Tableau de bord", icon: LayoutDashboard },
+  { href: "/dashboard", label: "Tableau de bord", icon: LayoutDashboard, roles: ["MANAGER", "OWNER"] },
   { href: "/actions", label: "Actions rapides", icon: Zap, roles: ["MANAGER"] },
-  { type: "separator", label: "Propriétés" },
+  { type: "separator", label: "Propriétés", roles: ["MANAGER", "OWNER"] },
   { href: "/properties", label: "Liste des propriétés", icon: ListTree, roles: ["OWNER", "MANAGER"] },
   { href: "/add-house", label: "Ajouter une maison", icon: Home, roles: ["MANAGER"] },
   { href: "/add-studio", label: "Ajouter un studio", icon: Building2, roles: ["MANAGER"] },
-  { type: "separator", label: "Finances" },
+  { type: "separator", label: "Finances", roles: ["MANAGER", "OWNER"] },
   { href: "/finances", label: "Entrées / Sorties", icon: ReceiptText, roles: ["OWNER", "MANAGER"] },
   { href: "/register-payment", label: "Enregistrer un loyer", icon: ArrowUpFromLine, roles: ["MANAGER"] },
   { href: "/register-expense", label: "Enregistrer une dépense", icon: TrendingDown, roles: ["MANAGER"] },
-  { type: "separator", label: "Système" },
+  { type: "separator", label: "Système", roles: ["ADMIN"] },
   { href: "/admin-users", label: "Utilisateurs", icon: Users, roles: ["ADMIN"] },
-  { href: "/settings", label: "Paramètres", icon: Settings, roles: ["ADMIN", "MANAGER", "OWNER"] },
+  { href: "/settings", label: "Paramètres", icon: Settings, roles: ["ADMIN"] },
 ];
 
 function NavContent({
@@ -57,6 +57,7 @@ function NavContent({
       <nav className="flex-1 overflow-y-auto px-3 py-4">
         <ul className="space-y-0.5">
           {navItems.map((item, i) => {
+            if ("roles" in item && user && !(item.roles as string[]).includes(user.role)) return null;
             if ("type" in item && item.type === "separator") {
               return (
                 <li key={i} className="px-3 pb-1 pt-4">
@@ -66,7 +67,6 @@ function NavContent({
                 </li>
               );
             }
-            if ("roles" in item && user && !(item.roles as string[]).includes(user.role)) return null;
             const Icon = (item as { icon: React.ElementType }).icon;
             const href = (item as { href: string }).href;
             const isActive = pathname === href;

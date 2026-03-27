@@ -36,7 +36,7 @@ export default function LoginPage() {
     try {
       const user = await login(values.username, values.password);
       toast.success(`Bienvenue, ${user.username} !`);
-      router.push("/dashboard");
+      router.push(user.role === "ADMIN" ? "/admin-users" : "/dashboard");
     } catch {
       toast.error("Identifiant ou mot de passe incorrect.");
       setLoading(false);

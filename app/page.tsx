@@ -9,7 +9,13 @@ export default function RootPage() {
 
   useEffect(() => {
     refreshSession()
-      .then((session) => router.replace(session ? "/dashboard" : "/login"))
+      .then((session) => {
+        if (!session) {
+          router.replace("/login");
+          return;
+        }
+        router.replace(session.role === "ADMIN" ? "/admin-users" : "/dashboard");
+      })
       .catch(() => router.replace("/login"));
   }, [router]);
 
