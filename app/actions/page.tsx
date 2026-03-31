@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowUpFromLine, TrendingDown, PlusSquare, ArrowRight } from "lucide-react";
+import { ArrowUpFromLine, TrendingDown, PlusSquare, ArrowRight, Landmark } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { useAppStore } from "@/lib/store";
 
@@ -23,6 +23,15 @@ const actions = [
     color: "bg-expense-bg",
     iconColor: "text-expense",
     border: "border-expense/20",
+  },
+  {
+    href: "/register-tax",
+    icon: Landmark,
+    title: "Paiement taxe",
+    description: "Enregistrer un paiement de taxe pour maison, studio ou immeuble.",
+    color: "bg-muted",
+    iconColor: "text-foreground",
+    border: "border-border",
   },
   {
     href: "/add-property",
