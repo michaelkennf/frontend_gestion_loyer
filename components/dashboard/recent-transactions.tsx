@@ -76,7 +76,7 @@ export function RecentTransactions() {
             ? (tx.data as Payment).propertyLabel
             : (tx.data as Expense).propertyLabel;
           const sub = isPayment
-            ? `Loyer – ${(tx.data as Payment).month}${(tx.data as Payment).propertyType === "house" && (tx.data as Payment).apartmentNumber ? ` · Niv ${(tx.data as Payment).floor ?? "-"} / Apt ${(tx.data as Payment).apartmentNumber}` : ""}`
+            ? `Loyer – ${(tx.data as Payment).paymentKind === "rental" ? `${(tx.data as Payment).monthsCount ?? 1} mois` : (tx.data as Payment).month}${((tx.data as Payment).propertyType === "house" || (tx.data as Payment).propertyType === "building") && (tx.data as Payment).apartmentNumber ? ` · Niv ${(tx.data as Payment).floor ?? "-"} / Apt ${(tx.data as Payment).apartmentNumber}` : ""}`
             : `${(tx.data as Expense).expenseType === "common" ? "Commun" : "Privé"} – ${(tx.data as Expense).category}`;
           const amount = tx.data.amount;
           const date = formatDate(tx.data.date);

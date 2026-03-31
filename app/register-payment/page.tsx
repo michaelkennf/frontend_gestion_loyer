@@ -1,11 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { useAppStore } from "@/lib/store";
+import { addPaymentApi } from "@/lib/api";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,11 +23,14 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 
 const schema = z.object({
-  propertyType: z.enum(["house", "studio"], { required_error: "Type requis" }),
+  propertyType: z.enum(["house", "building", "studio"], { required_error: "Type requis" }),
   propertyId: z.string().min(1, "Sélectionnez une propriété"),
+  paymentKind: z.enum(["rental", "monthly"], { required_error: "Type de paiement requis" }),
+  tenantName: z.string().trim().min(2, "Nom du locataire requis"),
   floor: z.coerce.number().int().min(1).optional(),
   apartmentNumber: z.coerce.number().int().min(1).optional(),
-  month: z.string().regex(/^\d{4}-\d{2}$/, "Format AAAA-MM requis"),
+  month: z.string().optional(),
+  monthsCount: z.coerce.number().int().min(1).optional(),
   amount: z.coerce.number().optional(),
   notes: z.string().optional(),
 }).superRefine((data, ctx) => {
@@ -40,13 +45,22 @@ const schema = z.object({
   if (data.propertyType === "studio" && (!data.amount || data.amount <= 0)) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Le montant doit être positif", path: ["amount"] });
   }
+  if (data.paymentKind === "monthly") {
+    if (!data.month || !/^\d{4}-\d{2}$/.test(data.month)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Format AAAA-MM requis", path: ["month"] });
+    }
+  }
+  if (data.paymentKind === "rental" && (!data.monthsCount || data.monthsCount < 1)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Nombre de mois requis", path: ["monthsCount"] });
+  }
 });
 
 type FormValues = z.infer<typeof schema>;
 
 export default function RegisterPaymentPage() {
   const router = useRouter();
-  const { houses, studios, addPayment, user } = useAppStore();
+  const { houses, studios, refresh, user } = useAppStore();
+  const [contractFile, setContractFile] = useState<File | null>(null);
 
   const {
     register,
@@ -60,7 +74,10 @@ export default function RegisterPaymentPage() {
     defaultValues: {
       propertyType: undefined,
       propertyId: "",
+      paymentKind: "monthly",
+      tenantName: "",
       month: new Date().toISOString().slice(0, 7),
+      monthsCount: 1,
       floor: undefined,
       apartmentNumber: undefined,
       notes: "",
@@ -70,44 +87,46 @@ export default function RegisterPaymentPage() {
   const propertyType = watch("propertyType");
   const propertyId = watch("propertyId");
   const floor = watch("floor");
-  const propertyList = propertyType === "house" ? houses : propertyType === "studio" ? studios : [];
-  const selectedHouse = propertyType === "house" ? houses.find((h) => h.id === propertyId) : undefined;
+  const propertyList = propertyType === "house" || propertyType === "building"
+    ? houses
+    : propertyType === "studio"
+      ? studios
+      : [];
+  const selectedHouse = propertyType === "house" || propertyType === "building"
+    ? houses.find((h) => h.id === propertyId)
+    : undefined;
   const selectedLevel = selectedHouse?.layout?.find((l) => l.floor === floor);
 
   const currentMonth = new Date().toISOString().slice(0, 7);
 
   async function onSubmit(values: FormValues) {
     if (user?.role !== "MANAGER") return toast.error("Action réservée au gestionnaire.");
-    const property =
-      values.propertyType === "house"
-        ? houses.find((h) => h.id === values.propertyId)
-        : studios.find((s) => s.id === values.propertyId);
-
-    const propertyLabel = property
-      ? (property as { address: string }).address
-      : "Propriété inconnue";
-
     const selectedApartmentRent =
       values.propertyType === "house"
+      || values.propertyType === "building"
         ? selectedHouse?.layout
             ?.find((l) => l.floor === values.floor)
             ?.apartments.find((a) => a.number === values.apartmentNumber)?.rentPrice
         : undefined;
 
-    await addPayment({
+    await addPaymentApi({
       propertyId: values.propertyId,
       propertyType: values.propertyType,
-      propertyLabel,
-      month: values.month,
-      amount: values.propertyType === "house" && selectedApartmentRent ? selectedApartmentRent : values.amount,
-      date: new Date().toISOString(),
+      paymentKind: values.paymentKind,
+      tenantName: values.tenantName,
+      month: values.paymentKind === "monthly" ? values.month : currentMonth,
+      monthsCount: values.paymentKind === "rental" ? values.monthsCount : undefined,
+      amount: (values.propertyType === "house" || values.propertyType === "building") && selectedApartmentRent ? selectedApartmentRent : values.amount,
       notes: values.notes,
-      floor: values.propertyType === "house" ? values.floor : undefined,
-      apartmentNumber: values.propertyType === "house" ? values.apartmentNumber : undefined,
+      floor: values.propertyType === "house" || values.propertyType === "building" ? values.floor : undefined,
+      apartmentNumber: values.propertyType === "house" || values.propertyType === "building" ? values.apartmentNumber : undefined,
+      contractFile,
     });
 
     toast.success("Paiement de loyer enregistré.");
+    await refresh();
     reset();
+    setContractFile(null);
     router.push("/dashboard");
   }
 
@@ -139,6 +158,7 @@ export default function RegisterPaymentPage() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="house">Maison</SelectItem>
+                        <SelectItem value="building">Immeuble</SelectItem>
                         <SelectItem value="studio">Studio</SelectItem>
                       </SelectContent>
                     </Select>
@@ -147,6 +167,42 @@ export default function RegisterPaymentPage() {
                 {errors.propertyType && (
                   <p className="text-xs text-destructive">{errors.propertyType.message}</p>
                 )}
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Type de paiement</Label>
+                  <Controller
+                    name="paymentKind"
+                    control={control}
+                    render={({ field }) => (
+                      <Select onValueChange={field.onChange} value={field.value ?? ""}>
+                        <SelectTrigger className={errors.paymentKind ? "border-destructive" : ""}>
+                          <SelectValue placeholder="Sélectionner…" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="rental">Loyer locatif</SelectItem>
+                          <SelectItem value="monthly">Paiement mensuel</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                  {errors.paymentKind && (
+                    <p className="text-xs text-destructive">{errors.paymentKind.message}</p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="tenantName">Nom du locataire</Label>
+                  <Input
+                    id="tenantName"
+                    placeholder="Ex: Jean Mukendi"
+                    {...register("tenantName")}
+                    className={errors.tenantName ? "border-destructive" : ""}
+                  />
+                  {errors.tenantName && (
+                    <p className="text-xs text-destructive">{errors.tenantName.message}</p>
+                  )}
+                </div>
               </div>
 
               {/* Property */}
@@ -189,7 +245,7 @@ export default function RegisterPaymentPage() {
                 </div>
               )}
 
-              {propertyType === "house" && selectedHouse && (
+              {(propertyType === "house" || propertyType === "building") && selectedHouse && (
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Niveau</Label>
@@ -237,20 +293,36 @@ export default function RegisterPaymentPage() {
                 </div>
               )}
 
-              {/* Month */}
-              <div className="space-y-2">
-                <Label htmlFor="month">Mois de référence</Label>
-                <Input
-                  id="month"
-                  type="month"
-                  defaultValue={currentMonth}
-                  {...register("month")}
-                  className={errors.month ? "border-destructive" : ""}
-                />
-                {errors.month && (
-                  <p className="text-xs text-destructive">{errors.month.message}</p>
-                )}
-              </div>
+              {watch("paymentKind") === "monthly" ? (
+                <div className="space-y-2">
+                  <Label htmlFor="month">Mois de référence</Label>
+                  <Input
+                    id="month"
+                    type="month"
+                    defaultValue={currentMonth}
+                    {...register("month")}
+                    className={errors.month ? "border-destructive" : ""}
+                  />
+                  {errors.month && (
+                    <p className="text-xs text-destructive">{errors.month.message}</p>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Label htmlFor="monthsCount">Nombre de mois</Label>
+                  <Input
+                    id="monthsCount"
+                    type="number"
+                    min={1}
+                    step="1"
+                    {...register("monthsCount")}
+                    className={errors.monthsCount ? "border-destructive" : ""}
+                  />
+                  {errors.monthsCount && (
+                    <p className="text-xs text-destructive">{errors.monthsCount.message}</p>
+                  )}
+                </div>
+              )}
 
               {/* Amount */}
               <div className="space-y-2">
@@ -270,12 +342,12 @@ export default function RegisterPaymentPage() {
                         const raw = e.target.value;
                         field.onChange(raw === "" ? undefined : Number(raw));
                       }}
-                      readOnly={propertyType === "house"}
+                      readOnly={propertyType === "house" || propertyType === "building"}
                       className={errors.amount ? "border-destructive" : ""}
                     />
                   )}
                 />
-                {propertyType === "house" && (
+                {(propertyType === "house" || propertyType === "building") && (
                   <p className="text-xs text-muted-foreground">
                     Le montant est défini automatiquement selon l'appartement choisi.
                   </p>
@@ -294,6 +366,28 @@ export default function RegisterPaymentPage() {
                   rows={3}
                   {...register("notes")}
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="contractFile">Contrat scanné (PDF)</Label>
+                <Input
+                  id="contractFile"
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] ?? null;
+                    if (file && file.type !== "application/pdf") {
+                      toast.error("Veuillez sélectionner un fichier PDF.");
+                      e.currentTarget.value = "";
+                      setContractFile(null);
+                      return;
+                    }
+                    setContractFile(file);
+                  }}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Le contrat PDF est optionnel mais recommandé.
+                </p>
               </div>
 
               <div className="flex gap-3 pt-2">

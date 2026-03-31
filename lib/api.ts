@@ -5,6 +5,13 @@ import type { SessionUser } from "@/lib/store";
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 const TOKEN_KEY = "rent-app-token";
 const REFRESH_TOKEN_KEY = "rent-app-refresh-token";
+const AUTH_DEBUG = process.env.NEXT_PUBLIC_AUTH_DEBUG === "1" || process.env.NODE_ENV !== "production";
+const AUTH_CHANGED_EVENT = "rent-auth-changed";
+
+function notifyAuthChanged() {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(AUTH_CHANGED_EVENT));
+}
 
 export function getToken() {
   if (typeof window === "undefined") return null;
@@ -44,22 +51,35 @@ function setRoleCookie(role: string | null) {
   else document.cookie = `rent_role=${role}; path=/; samesite=lax`;
 }
 
+export function clearAuthState() {
+  setToken(null);
+  setRefreshToken(null);
+  setRoleCookie(null);
+  if (typeof window !== "undefined") {
+    localStorage.removeItem("rent-app-session");
+  }
+  notifyAuthChanged();
+}
+
 async function request<T>(path: string, init?: RequestInit, retry = true): Promise<T> {
   const token = getToken();
+  const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData;
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
+    cache: "no-store",
     headers: {
-      "Content-Type": "application/json",
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init?.headers || {}),
     },
   });
-  if (res.status === 401 && retry) {
+  if (res.status === 401 && retry && path !== "/auth/login") {
     const refreshToken = getRefreshToken();
     if (refreshToken) {
       try {
         const refreshed = await fetch(`${API_BASE}/auth/refresh`, {
           method: "POST",
+          cache: "no-store",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ refreshToken }),
         });
@@ -73,8 +93,16 @@ async function request<T>(path: string, init?: RequestInit, retry = true): Promi
         // noop
       }
     }
+    clearAuthState();
   }
   const data = await res.json().catch(() => ({}));
+  if (!res.ok && AUTH_DEBUG && path.startsWith("/auth")) {
+    console.warn("[AUTH_DEBUG] request_failed", {
+      path,
+      status: res.status,
+      message: (data as { message?: string })?.message ?? "unknown",
+    });
+  }
   if (!res.ok) throw new Error(data.message || "Erreur API");
   return data as T;
 }
@@ -87,7 +115,15 @@ export async function loginApi(username: string, password: string) {
   setToken(data.token);
   setRefreshToken(data.refreshToken);
   setRoleCookie(data.user.role);
+  notifyAuthChanged();
   return data.user;
+}
+
+export function onAuthChanged(callback: () => void) {
+  if (typeof window === "undefined") return () => {};
+  const handler = () => callback();
+  window.addEventListener(AUTH_CHANGED_EVENT, handler);
+  return () => window.removeEventListener(AUTH_CHANGED_EVENT, handler);
 }
 
 export function logoutApi() {
@@ -95,13 +131,12 @@ export function logoutApi() {
   if (refreshToken) {
     void fetch(`${API_BASE}/auth/logout`, {
       method: "POST",
+      cache: "no-store",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refreshToken }),
     });
   }
-  setToken(null);
-  setRefreshToken(null);
-  setRoleCookie(null);
+  clearAuthState();
 }
 
 export async function meApi() {
@@ -150,20 +185,39 @@ export async function deleteStudioApi(studioId: string) {
 }
 
 export async function addPaymentApi(payload: {
-  propertyType: "house" | "studio";
+  propertyType: "house" | "building" | "studio";
   propertyId: string;
-  month: string;
+  paymentKind: "rental" | "monthly";
+  tenantName: string;
+  month?: string;
+  monthsCount?: number;
   amount: number;
   notes?: string;
   floor?: number;
   apartmentNumber?: number;
+  contractFile?: File | null;
 }) {
-  return request("/payments", { method: "POST", body: JSON.stringify(payload) });
+  const body = new FormData();
+  body.append("propertyType", payload.propertyType);
+  body.append("propertyId", payload.propertyId);
+  body.append("paymentKind", payload.paymentKind);
+  body.append("tenantName", payload.tenantName);
+  if (payload.month) body.append("month", payload.month);
+  if (typeof payload.monthsCount === "number") body.append("monthsCount", String(payload.monthsCount));
+  body.append("amount", String(payload.amount));
+  if (payload.notes) body.append("notes", payload.notes);
+  if (typeof payload.floor === "number") body.append("floor", String(payload.floor));
+  if (typeof payload.apartmentNumber === "number") body.append("apartmentNumber", String(payload.apartmentNumber));
+  if (payload.contractFile) body.append("contractFile", payload.contractFile);
+  return request("/payments", { method: "POST", body });
 }
 
 export async function updatePaymentApi(paymentId: string, payload: {
-  month: string;
+  month?: string;
+  monthsCount?: number;
   notes?: string;
+  paymentKind?: "rental" | "monthly";
+  tenantName?: string;
   floor?: number;
   apartmentNumber?: number;
   amount?: number;
@@ -177,8 +231,8 @@ export async function deletePaymentApi(paymentId: string) {
 
 export async function addExpenseApi(payload: {
   expenseType: "common" | "private";
-  propertyType: "house" | "studio";
-  propertyId: string;
+  propertyType: "house" | "building" | "studio" | "land";
+  propertyId?: string;
   apartmentNumber?: string;
   category: string;
   amount: number;

@@ -32,9 +32,13 @@ export type Studio = {
 export type Payment = {
   id: string;
   propertyId: string;
-  propertyType: "house" | "studio";
+  propertyType: "house" | "building" | "studio";
   propertyLabel: string;
+  paymentKind: "rental" | "monthly";
+  tenantName: string;
+  contractFileUrl?: string;
   month: string;
+  monthsCount?: number | null;
   amount: number;
   date: string;
   notes?: string;
@@ -46,8 +50,8 @@ export type Payment = {
 export type Expense = {
   id: string;
   expenseType: "common" | "private";
-  propertyId: string;
-  propertyType: "house" | "studio";
+  propertyId?: string;
+  propertyType: "house" | "building" | "studio" | "land";
   propertyLabel: string;
   apartmentNumber?: string;
   category: string;

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowUpFromLine, TrendingDown, Home, Building2, ArrowRight } from "lucide-react";
+import { ArrowUpFromLine, TrendingDown, PlusSquare, ArrowRight } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { useAppStore } from "@/lib/store";
 
@@ -25,22 +25,13 @@ const actions = [
     border: "border-expense/20",
   },
   {
-    href: "/add-house",
-    icon: Home,
-    title: "Ajouter une maison",
-    description: "Enregistrer une nouvelle maison avec ses appartements et son loyer.",
+    href: "/add-property",
+    icon: PlusSquare,
+    title: "Ajouter une propriété",
+    description: "Choisir et enregistrer une maison, un studio, un immeuble ou un terrain.",
     color: "bg-balance-bg",
     iconColor: "text-balance",
     border: "border-balance/20",
-  },
-  {
-    href: "/add-studio",
-    icon: Building2,
-    title: "Ajouter un studio",
-    description: "Enregistrer un nouveau studio avec son loyer mensuel.",
-    color: "bg-muted",
-    iconColor: "text-muted-foreground",
-    border: "border-border",
   },
 ];
 

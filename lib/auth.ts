@@ -1,6 +1,6 @@
 "use client";
 
-import { loginApi, logoutApi, meApi } from "@/lib/api";
+import { clearAuthState, loginApi, logoutApi, meApi } from "@/lib/api";
 import type { SessionUser } from "@/lib/store";
 
 const SESSION_KEY = "rent-app-session";
@@ -22,6 +22,7 @@ export async function refreshSession(): Promise<SessionUser | null> {
     localStorage.setItem(SESSION_KEY, JSON.stringify(user));
     return user;
   } catch {
+    clearAuthState();
     return null;
   }
 }

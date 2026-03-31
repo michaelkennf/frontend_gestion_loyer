@@ -10,6 +10,7 @@ import {
   addExpenseApi,
   addCommentApi,
   hasAuthState,
+  onAuthChanged,
 } from "@/lib/api";
 import { getSession, refreshSession } from "@/lib/auth";
 
@@ -22,6 +23,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
+    setLoading(true);
     if (!hasAuthState() && !getSession()) {
       setState(initialState);
       setLoading(false);
@@ -42,6 +44,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     refresh().catch(() => setLoading(false));
   }, [refresh]);
 
+  useEffect(() => {
+    const unsubscribe = onAuthChanged(() => {
+      refresh().catch(() => setLoading(false));
+    });
+    return unsubscribe;
+  }, [refresh]);
+
   const addHouse = useCallback(async (h: Omit<House, "id" | "floors" | "apartments" | "rentPrice"> & { levels: { floor: number; apartments: { number: number; rentPrice: number }[] }[] }) => {
     await addHouseApi(h);
     await refresh();
@@ -54,7 +63,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     await addPaymentApi({
       propertyType: p.propertyType,
       propertyId: p.propertyId,
+      paymentKind: p.paymentKind,
+      tenantName: p.tenantName,
       month: p.month,
+      monthsCount: p.monthsCount ?? undefined,
       amount: p.amount,
       notes: p.notes,
       floor: p.floor ?? undefined,

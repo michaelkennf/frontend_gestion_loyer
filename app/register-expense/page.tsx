@@ -29,17 +29,19 @@ const PRIVATE_CATEGORIES = [
 ];
 
 const COMMON_CATEGORIES = [
-  "Réparation balcon",
-  "Réparation garage",
-  "Réparation buanderie",
+  "SNEL",
+  "REGIDESO",
+  "SECURITE",
+  "GENERATEUR (GROUPE ELECTRONIQUE)",
+  "IMMONDICE",
   "Autre",
 ];
 
 const schema = z
   .object({
     expenseType: z.enum(["common", "private"], { required_error: "Type requis" }),
-    propertyType: z.enum(["house", "studio"], { required_error: "Type de propriété requis" }),
-    propertyId: z.string().min(1, "Sélectionnez une propriété"),
+    propertyType: z.enum(["house", "building", "studio", "land"], { required_error: "Type de propriété requis" }),
+    propertyId: z.string().optional(),
     apartmentNumber: z.string().optional(),
     category: z.string().min(1, "Catégorie requise"),
     customCategory: z.string().optional(),
@@ -48,7 +50,14 @@ const schema = z
     date: z.string().min(1, "Date requise"),
   })
   .superRefine((data, ctx) => {
-    if (data.expenseType === "private" && !data.apartmentNumber?.trim()) {
+    if (data.propertyType !== "land" && !data.propertyId?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Sélectionnez une propriété",
+        path: ["propertyId"],
+      });
+    }
+    if (data.propertyType !== "land" && data.expenseType === "private" && !data.apartmentNumber?.trim()) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "Numéro d'appartement requis pour une dépense privée",
@@ -94,23 +103,29 @@ export default function RegisterExpensePage() {
   const expenseType = watch("expenseType");
   const propertyType = watch("propertyType");
   const category = watch("category");
-  const propertyList = propertyType === "house" ? houses : propertyType === "studio" ? studios : [];
+  const propertyList = propertyType === "house" || propertyType === "building"
+    ? houses
+    : propertyType === "studio"
+      ? studios
+      : [];
   const categoryList = expenseType === "private" ? PRIVATE_CATEGORIES : COMMON_CATEGORIES;
 
   async function onSubmit(values: FormValues) {
     if (user?.role !== "MANAGER") return toast.error("Action réservée au gestionnaire.");
     const property =
-      values.propertyType === "house"
+      values.propertyType === "house" || values.propertyType === "building"
         ? houses.find((h) => h.id === values.propertyId)
         : studios.find((s) => s.id === values.propertyId);
 
-    const propertyLabel = property
+    const propertyLabel = values.propertyType === "land"
+      ? "Terrain"
+      : property
       ? (property as { address: string }).address
       : "Propriété inconnue";
 
     await addExpense({
       expenseType: values.expenseType,
-      propertyId: values.propertyId,
+      propertyId: values.propertyType === "land" ? undefined : values.propertyId,
       propertyType: values.propertyType,
       propertyLabel,
       apartmentNumber: values.apartmentNumber,
@@ -176,7 +191,9 @@ export default function RegisterExpensePage() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="house">Maison</SelectItem>
+                        <SelectItem value="building">Immeuble</SelectItem>
                         <SelectItem value="studio">Studio</SelectItem>
+                        <SelectItem value="land">Terrain</SelectItem>
                       </SelectContent>
                     </Select>
                   )}
@@ -187,7 +204,7 @@ export default function RegisterExpensePage() {
               </div>
 
               {/* Property */}
-              {propertyType && (
+              {propertyType && propertyType !== "land" && (
                 <div className="space-y-2">
                   <Label>Propriété</Label>
                   <Controller
@@ -195,7 +212,7 @@ export default function RegisterExpensePage() {
                     control={control}
                     render={({ field }) => (
                       <Select onValueChange={field.onChange} value={field.value ?? ""}>
-                        <SelectTrigger className={errors.propertyId ? "border-destructive" : ""}>
+                      <SelectTrigger className={errors.propertyId ? "border-destructive" : ""}>
                           <SelectValue
                             placeholder={
                               propertyList.length === 0
@@ -227,7 +244,7 @@ export default function RegisterExpensePage() {
               )}
 
               {/* Apartment number — only for private expenses */}
-              {expenseType === "private" && (
+              {propertyType !== "land" && expenseType === "private" && (
                 <div className="space-y-2">
                   <Label htmlFor="apartmentNumber">Numéro d&apos;appartement</Label>
                   <Input
@@ -243,32 +260,47 @@ export default function RegisterExpensePage() {
               )}
 
               {/* Category */}
-              <div className="space-y-2">
-                <Label>Catégorie</Label>
-                <Controller
-                  name="category"
-                  control={control}
-                  render={({ field }) => (
-                    <Select onValueChange={field.onChange} value={field.value ?? ""}>
-                      <SelectTrigger className={errors.category ? "border-destructive" : ""}>
-                        <SelectValue placeholder="Sélectionner une catégorie…" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {categoryList.map((cat) => (
-                          <SelectItem key={cat} value={cat}>
-                            {cat}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+              {propertyType === "land" ? (
+                <div className="space-y-2">
+                  <Label htmlFor="category">Nom de la dépense</Label>
+                  <Input
+                    id="category"
+                    placeholder="Ex: Débroussaillage, clôture, bornage..."
+                    {...register("category")}
+                    className={errors.category ? "border-destructive" : ""}
+                  />
+                  {errors.category && (
+                    <p className="text-xs text-destructive">{errors.category.message}</p>
                   )}
-                />
-                {errors.category && (
-                  <p className="text-xs text-destructive">{errors.category.message}</p>
-                )}
-              </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Label>Catégorie</Label>
+                  <Controller
+                    name="category"
+                    control={control}
+                    render={({ field }) => (
+                      <Select onValueChange={field.onChange} value={field.value ?? ""}>
+                        <SelectTrigger className={errors.category ? "border-destructive" : ""}>
+                          <SelectValue placeholder="Sélectionner une catégorie…" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {categoryList.map((cat) => (
+                            <SelectItem key={cat} value={cat}>
+                              {cat}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                  {errors.category && (
+                    <p className="text-xs text-destructive">{errors.category.message}</p>
+                  )}
+                </div>
+              )}
 
-              {category === "Autre" && (
+              {propertyType !== "land" && category === "Autre" && (
                 <div className="space-y-2">
                   <Label htmlFor="customCategory">Catégorie personnalisée</Label>
                   <Input

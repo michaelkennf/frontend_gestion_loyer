@@ -12,6 +12,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
+const API_ORIGIN = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api").replace(/\/api$/, "");
+
 export default function FinancesPage() {
   const { payments, expenses, houses, user, refresh } = useAppStore();
   const isManager = user?.role === "MANAGER";
@@ -31,6 +33,9 @@ export default function FinancesPage() {
   const [paymentFloor, setPaymentFloor] = useState<number>(1);
   const [paymentApartmentNumber, setPaymentApartmentNumber] = useState<number>(1);
   const [paymentAmount, setPaymentAmount] = useState<string>("");
+  const [paymentKind, setPaymentKind] = useState<"rental" | "monthly">("monthly");
+  const [paymentTenantName, setPaymentTenantName] = useState<string>("");
+  const [paymentMonthsCount, setPaymentMonthsCount] = useState<number>(1);
 
   // Expense form state
   const PRIVATE_CATEGORIES = [
@@ -41,9 +46,11 @@ export default function FinancesPage() {
     "Autre",
   ] as const;
   const COMMON_CATEGORIES = [
-    "Réparation balcon",
-    "Réparation garage",
-    "Réparation buanderie",
+    "SNEL",
+    "REGIDESO",
+    "SECURITE",
+    "GENERATEUR (GROUPE ELECTRONIQUE)",
+    "IMMONDICE",
     "Autre",
   ] as const;
 
@@ -65,10 +72,16 @@ export default function FinancesPage() {
     setPaymentFloor(p.floor ?? 1);
     setPaymentApartmentNumber(p.apartmentNumber ?? 1);
     setPaymentAmount(String(p.amount));
+    setPaymentKind(p.paymentKind ?? "monthly");
+    setPaymentTenantName(p.tenantName ?? "");
+    setPaymentMonthsCount(p.monthsCount ?? 1);
     setInitialPaymentSnapshot(
       JSON.stringify({
         month: p.month,
+        monthsCount: p.monthsCount ?? 1,
         notes: p.notes ?? "",
+        paymentKind: p.paymentKind ?? "monthly",
+        tenantName: p.tenantName ?? "",
         floor: p.floor ?? 1,
         apartmentNumber: p.apartmentNumber ?? 1,
       })
@@ -94,9 +107,10 @@ export default function FinancesPage() {
       setExpenseCategory("Autre");
       setExpenseCustomCategory("");
     } else {
-      // Fallback
-      setExpenseCategory("Autre");
-      setExpenseCustomCategory(e.category);
+      // Fallback when "Autre" is unavailable (e.g. common categories).
+      const fallback = list[0];
+      setExpenseCategory(fallback ?? "");
+      setExpenseCustomCategory("");
     }
     setExpenseAmount(String(e.amount));
     setExpenseDate(e.date.slice(0, 10));
@@ -118,7 +132,10 @@ export default function FinancesPage() {
     if (!editingPaymentId) return;
     const current = JSON.stringify({
       month: paymentMonth,
+      monthsCount: paymentMonthsCount,
       notes: paymentNotes,
+      paymentKind,
+      tenantName: paymentTenantName,
       floor: paymentFloor,
       apartmentNumber: paymentApartmentNumber,
     });
@@ -152,13 +169,19 @@ export default function FinancesPage() {
   async function savePayment() {
     if (!editingPaymentId || !editingPayment) return;
     const month = paymentMonth;
-    if (!month) return toast.error("Mois requis.");
+    if (paymentKind === "monthly" && !month) return toast.error("Mois requis.");
+    if (paymentKind === "rental" && (!paymentMonthsCount || paymentMonthsCount < 1)) {
+      return toast.error("Nombre de mois requis.");
+    }
 
     if (editingPayment.propertyType === "house") {
       // Backend recalculates amount from house layout, so we send floor/apartment.
       await updatePaymentApi(editingPaymentId, {
-        month,
+        month: paymentKind === "monthly" ? month : undefined,
+        monthsCount: paymentKind === "rental" ? paymentMonthsCount : undefined,
         notes: paymentNotes,
+        paymentKind,
+        tenantName: paymentTenantName,
         floor: paymentFloor,
         apartmentNumber: paymentApartmentNumber,
       });
@@ -166,8 +189,11 @@ export default function FinancesPage() {
       const amt = Number(paymentAmount);
       if (!amt || amt <= 0) return toast.error("Montant invalide.");
       await updatePaymentApi(editingPaymentId, {
-        month,
+        month: paymentKind === "monthly" ? month : undefined,
+        monthsCount: paymentKind === "rental" ? paymentMonthsCount : undefined,
         notes: paymentNotes,
+        paymentKind,
+        tenantName: paymentTenantName,
         amount: amt,
       });
     }
@@ -215,9 +241,20 @@ export default function FinancesPage() {
                   <div>
                     <p className="text-sm font-medium">{p.propertyLabel}</p>
                     <p className="text-xs text-muted-foreground">
-                      {p.month} · ${p.amount}
-                      {p.propertyType === "house" && p.apartmentNumber ? ` · Niveau ${p.floor ?? "-"} / Apt ${p.apartmentNumber}` : ""}
+                      {p.paymentKind === "rental" ? `${p.monthsCount ?? 1} mois` : p.month} · ${p.amount} · {p.paymentKind === "rental" ? "Loyer locatif" : "Paiement mensuel"}
+                      {(p.propertyType === "house" || p.propertyType === "building") && p.apartmentNumber ? ` · Niveau ${p.floor ?? "-"} / Apt ${p.apartmentNumber}` : ""}
                     </p>
+                    <p className="text-xs text-muted-foreground">Locataire: {p.tenantName || "-"}</p>
+                    {p.contractFileUrl && (
+                      <a
+                        href={`${API_ORIGIN}${p.contractFileUrl}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-xs text-primary underline"
+                      >
+                        Voir le contrat PDF
+                      </a>
+                    )}
                   </div>
                   {isManager && (
                     <div className="flex gap-2">
@@ -302,17 +339,49 @@ export default function FinancesPage() {
           </DialogHeader>
 
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Mois (YYYY-MM)</Label>
-              <Input value={paymentMonth} onChange={(e) => setPaymentMonth(e.target.value)} />
-            </div>
+            {paymentKind === "monthly" ? (
+              <div className="space-y-2">
+                <Label>Mois (YYYY-MM)</Label>
+                <Input value={paymentMonth} onChange={(e) => setPaymentMonth(e.target.value)} />
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label>Nombre de mois</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={paymentMonthsCount}
+                  onChange={(e) => setPaymentMonthsCount(Math.max(1, Number(e.target.value || 1)))}
+                />
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label>Notes</Label>
               <Textarea rows={3} value={paymentNotes} onChange={(e) => setPaymentNotes(e.target.value)} />
             </div>
 
-            {editingPayment?.propertyType === "house" ? (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Type de paiement</Label>
+                <Select value={paymentKind} onValueChange={(v) => setPaymentKind(v as "rental" | "monthly")}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="rental">Loyer locatif</SelectItem>
+                    <SelectItem value="monthly">Paiement mensuel</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Nom du locataire</Label>
+                <Input value={paymentTenantName} onChange={(e) => setPaymentTenantName(e.target.value)} />
+              </div>
+            </div>
+
+            {editingPayment?.propertyType === "house" || editingPayment?.propertyType === "building" ? (
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Niveau</Label>

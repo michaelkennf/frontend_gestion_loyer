@@ -34,11 +34,16 @@ export default function LoginPage() {
   async function onSubmit(values: FormValues) {
     setLoading(true);
     try {
-      const user = await login(values.username, values.password);
+      const user = await login(values.username.trim(), values.password);
       toast.success(`Bienvenue, ${user.username} !`);
       router.push(user.role === "ADMIN" ? "/admin-users" : "/dashboard");
-    } catch {
-      toast.error("Identifiant ou mot de passe incorrect.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (/identifiants invalides/i.test(message)) {
+        toast.error("Identifiant ou mot de passe incorrect.");
+      } else {
+        toast.error("Connexion impossible pour le moment. Vérifiez le serveur puis réessayez.");
+      }
       setLoading(false);
     }
   }
