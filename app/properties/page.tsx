@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { deleteHouseApi, deleteStudioApi, updateHouseApi, updateStudioApi } from "@/lib/api";
+import { deleteHouseApi, deleteLandApi, deleteStudioApi, updateHouseApi, updateLandApi, updateStudioApi } from "@/lib/api";
 import {
   Dialog,
   DialogContent,
@@ -16,21 +16,28 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { floorDisplayLabel } from "@/lib/utils";
 
 export default function PropertiesPage() {
-  const { houses, studios, user, refresh } = useAppStore();
+  const { houses, studios, lands, user, refresh } = useAppStore();
   const isManager = user?.role === "MANAGER";
   const [editingHouseId, setEditingHouseId] = useState<string | null>(null);
   const [editingStudioId, setEditingStudioId] = useState<string | null>(null);
+  const [editingLandId, setEditingLandId] = useState<string | null>(null);
   const [houseAddress, setHouseAddress] = useState("");
   const [levels, setLevels] = useState<{ floor: number; apartments: { number: number; rentPrice: number | null }[] }[]>([]);
   const [studioAddress, setStudioAddress] = useState("");
   const [studioRent, setStudioRent] = useState<string>("");
+  const [landAddress, setLandAddress] = useState("");
+  const [landSize, setLandSize] = useState<string>("");
+  const [landMonthlyRent, setLandMonthlyRent] = useState<string>("");
   const [initialHouseSnapshot, setInitialHouseSnapshot] = useState("");
   const [initialStudioSnapshot, setInitialStudioSnapshot] = useState("");
+  const [initialLandSnapshot, setInitialLandSnapshot] = useState("");
 
   const editingHouse = houses.find((h) => h.id === editingHouseId) ?? null;
   const editingStudio = studios.find((s) => s.id === editingStudioId) ?? null;
+  const editingLand = lands.find((l) => l.id === editingLandId) ?? null;
 
   function openHouseEditor(houseId: string) {
     const h = houses.find((x) => x.id === houseId);
@@ -53,6 +60,16 @@ export default function PropertiesPage() {
     setStudioAddress(s.address);
     setStudioRent(String(s.monthlyRent));
     setInitialStudioSnapshot(JSON.stringify({ address: s.address, monthlyRent: s.monthlyRent }));
+  }
+
+  function openLandEditor(landId: string) {
+    const l = lands.find((x) => x.id === landId);
+    if (!l) return;
+    setEditingLandId(landId);
+    setLandAddress(l.address);
+    setLandSize(String(l.size));
+    setLandMonthlyRent(String(l.monthlyRent));
+    setInitialLandSnapshot(JSON.stringify({ address: l.address, size: l.size, monthlyRent: l.monthlyRent }));
   }
 
   async function saveHouse() {
@@ -86,6 +103,20 @@ export default function PropertiesPage() {
     toast.success("Studio mis à jour.");
   }
 
+  async function saveLand() {
+    if (!editingLandId) return;
+    const size = Number(landSize);
+    const monthlyRent = Number(landMonthlyRent);
+    if (!landAddress.trim() || !size || size <= 0 || !monthlyRent || monthlyRent <= 0) {
+      return toast.error("Adresse, superficie et prix de location requis.");
+    }
+    await updateLandApi(editingLandId, { address: landAddress.trim(), size, monthlyRent });
+    await refresh();
+    setEditingLandId(null);
+    setInitialLandSnapshot("");
+    toast.success("Terrain mis à jour.");
+  }
+
   function closeHouseEditorWithConfirm() {
     const current = JSON.stringify({
       address: houseAddress.trim(),
@@ -115,8 +146,22 @@ export default function PropertiesPage() {
     setInitialStudioSnapshot("");
   }
 
+  function closeLandEditorWithConfirm() {
+    const current = JSON.stringify({
+      address: landAddress.trim(),
+      size: Number(landSize),
+      monthlyRent: Number(landMonthlyRent),
+    });
+    if (initialLandSnapshot && initialLandSnapshot !== current) {
+      const ok = window.confirm("Des modifications non sauvegardées seront perdues. Fermer ?");
+      if (!ok) return;
+    }
+    setEditingLandId(null);
+    setInitialLandSnapshot("");
+  }
+
   return (
-    <DashboardLayout title="Propriétés" description="Liste complète des maisons et studios">
+    <DashboardLayout title="Propriétés" description="Maisons, studios et terrains">
       <div className="space-y-6">
         <div className="rounded-xl border border-border bg-card p-4">
           <h3 className="mb-3 text-sm font-semibold">Maisons</h3>
@@ -155,7 +200,7 @@ export default function PropertiesPage() {
                 <div className="mt-3 space-y-2">
                   {h.layout?.map((lvl) => (
                     <div key={`${h.id}-${lvl.floor}`} className="rounded-md bg-muted/40 p-2">
-                      <p className="text-xs font-medium">Niveau {lvl.floor}</p>
+                      <p className="text-xs font-medium">{floorDisplayLabel(lvl.floor)}</p>
                       <p className="text-xs text-muted-foreground">
                         {lvl.apartments.map((a) => `Apt ${a.number}: $${a.rentPrice}`).join(" · ")}
                       </p>
@@ -205,6 +250,46 @@ export default function PropertiesPage() {
             {studios.length === 0 && <p className="text-sm text-muted-foreground">Aucun studio enregistré.</p>}
           </div>
         </div>
+
+        <div className="rounded-xl border border-border bg-card p-4">
+          <h3 className="mb-3 text-sm font-semibold">Terrains</h3>
+          <div className="space-y-3">
+            {lands.map((l) => (
+              <div key={l.id} className="flex items-center justify-between rounded-lg border border-border p-4">
+                <div>
+                  <p className="text-sm font-semibold">{l.address}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {l.size} m² · Loyer : ${l.monthlyRent}/mois
+                  </p>
+                </div>
+                {isManager && (
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => openLandEditor(l.id)}
+                    >
+                      Modifier
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={async () => {
+                        if (!window.confirm("Supprimer ce terrain ?")) return;
+                        await deleteLandApi(l.id);
+                        await refresh();
+                        toast.success("Terrain supprimé.");
+                      }}
+                    >
+                      Supprimer
+                    </Button>
+                  </div>
+                )}
+              </div>
+            ))}
+            {lands.length === 0 && <p className="text-sm text-muted-foreground">Aucun terrain enregistré.</p>}
+          </div>
+        </div>
       </div>
 
       <Dialog open={Boolean(editingHouse)} onOpenChange={(v) => !v && closeHouseEditorWithConfirm()}>
@@ -250,7 +335,7 @@ export default function PropertiesPage() {
             {levels.map((lvl, lvlIdx) => (
               <div key={`edit-lvl-${lvl.floor}`} className="rounded-lg border border-border p-3 space-y-3">
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-semibold">Niveau {lvl.floor}</p>
+                  <p className="text-sm font-semibold">{floorDisplayLabel(lvl.floor)}</p>
                   <Button
                     type="button"
                     variant="outline"
@@ -345,6 +430,33 @@ export default function PropertiesPage() {
           <DialogFooter>
             <Button variant="outline" onClick={closeStudioEditorWithConfirm}>Annuler</Button>
             <Button onClick={saveStudio}>Enregistrer</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(editingLand)} onOpenChange={(v) => !v && closeLandEditorWithConfirm()}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Modifier terrain</DialogTitle>
+            <DialogDescription>Adresse, superficie et prix de location.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label>Adresse</Label>
+              <Input value={landAddress} onChange={(e) => setLandAddress(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Superficie (m²)</Label>
+              <Input type="number" min={0.01} step="0.01" value={landSize} onChange={(e) => setLandSize(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Prix de location ($ / mois)</Label>
+              <Input type="number" min={0.01} step="0.01" value={landMonthlyRent} onChange={(e) => setLandMonthlyRent(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeLandEditorWithConfirm}>Annuler</Button>
+            <Button onClick={saveLand}>Enregistrer</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

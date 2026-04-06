@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { useAppStore } from "@/lib/store";
@@ -11,11 +12,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { floorDisplayLabel } from "@/lib/utils";
 
 const API_ORIGIN = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api").replace(/\/api$/, "");
 
 export default function FinancesPage() {
-  const { payments, expenses, houses, user, refresh } = useAppStore();
+  const { payments, expenses, houses, suppliers, user, refresh } = useAppStore();
   const isManager = user?.role === "MANAGER";
   const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
@@ -62,6 +64,7 @@ export default function FinancesPage() {
   const [expenseDate, setExpenseDate] = useState<string>("");
   const [expenseComment, setExpenseComment] = useState<string>("");
   const [expenseApartmentNumber, setExpenseApartmentNumber] = useState<string>("");
+  const [expenseSupplierId, setExpenseSupplierId] = useState<string>("__none__");
 
   function openPaymentEditor(id: string) {
     const p = payments.find((x) => x.id === id);
@@ -116,6 +119,7 @@ export default function FinancesPage() {
     setExpenseDate(e.date.slice(0, 10));
     setExpenseComment(e.comment ?? "");
     setExpenseApartmentNumber(e.apartmentNumber ?? "");
+    setExpenseSupplierId(e.supplierId ?? "__none__");
     setInitialExpenseSnapshot(
       JSON.stringify({
         expenseType: e.expenseType,
@@ -124,6 +128,7 @@ export default function FinancesPage() {
         date: e.date.slice(0, 10),
         comment: e.comment ?? "",
         apartmentNumber: e.apartmentNumber ?? "",
+        supplierId: e.supplierId ?? "__none__",
       })
     );
   }
@@ -157,6 +162,7 @@ export default function FinancesPage() {
       date: expenseDate,
       comment: expenseComment,
       apartmentNumber: expenseApartmentNumber,
+      supplierId: expenseSupplierId,
     });
     if (initialExpenseSnapshot && initialExpenseSnapshot !== current) {
       const ok = window.confirm("Des modifications non sauvegardées seront perdues. Fermer ?");
@@ -174,7 +180,7 @@ export default function FinancesPage() {
       return toast.error("Nombre de mois requis.");
     }
 
-    if (editingPayment.propertyType === "house") {
+    if (editingPayment.propertyType === "house" || editingPayment.propertyType === "building") {
       // Backend recalculates amount from house layout, so we send floor/apartment.
       await updatePaymentApi(editingPaymentId, {
         month: paymentKind === "monthly" ? month : undefined,
@@ -221,6 +227,9 @@ export default function FinancesPage() {
       date: expenseDate,
       comment: expenseComment,
       apartmentNumber: apartmentNumber && apartmentNumber.trim() ? apartmentNumber : undefined,
+      ...(editingExpense.expenseType === "common"
+        ? { supplierId: expenseSupplierId === "__none__" ? null : expenseSupplierId }
+        : {}),
     });
 
     await refresh();
@@ -242,7 +251,11 @@ export default function FinancesPage() {
                     <p className="text-sm font-medium">{p.propertyLabel}</p>
                     <p className="text-xs text-muted-foreground">
                       {p.paymentKind === "rental" ? `${p.monthsCount ?? 1} mois` : p.month} · ${p.amount} · {p.paymentKind === "rental" ? "Loyer locatif" : "Paiement mensuel"}
-                      {(p.propertyType === "house" || p.propertyType === "building") && p.apartmentNumber ? ` · Niveau ${p.floor ?? "-"} / Apt ${p.apartmentNumber}` : ""}
+                      {p.propertyType === "land"
+                        ? " · Terrain"
+                        : (p.propertyType === "house" || p.propertyType === "building") && p.apartmentNumber
+                          ? ` · ${typeof p.floor === "number" ? floorDisplayLabel(p.floor) : "Niveau -"} / Apt ${p.apartmentNumber}`
+                          : ""}
                     </p>
                     <p className="text-xs text-muted-foreground">Locataire: {p.tenantName || "-"}</p>
                     {p.contractFileUrl && (
@@ -297,6 +310,9 @@ export default function FinancesPage() {
                     <p className="text-xs text-muted-foreground">
                       {e.expenseType === "common" ? "Publique" : "Privée"} · {e.category} · ${e.amount}
                       {e.apartmentNumber ? ` · Apt ${e.apartmentNumber}` : ""}
+                      {e.expenseType === "common" && e.supplierName
+                        ? ` · Fournisseur : ${e.supplierName}${e.supplierContact ? ` (${e.supplierContact})` : ""}`
+                        : ""}
                     </p>
                   </div>
                   {isManager && (
@@ -385,7 +401,7 @@ export default function FinancesPage() {
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Niveau</Label>
-                  <Input type="number" min={1} step={1} value={paymentFloor} onChange={(e) => setPaymentFloor(Number(e.target.value))} />
+                  <Input type="number" min={0} step={1} value={paymentFloor} onChange={(e) => setPaymentFloor(Number(e.target.value))} />
                 </div>
                 <div className="space-y-2">
                   <Label>Appartement</Label>
@@ -408,7 +424,9 @@ export default function FinancesPage() {
               </div>
             ) : (
               <div className="space-y-2">
-                <Label>Montant (studio)</Label>
+                <Label>
+                  {editingPayment?.propertyType === "land" ? "Montant (terrain)" : "Montant (studio)"}
+                </Label>
                 <Input
                   type="number"
                   min={0}
@@ -500,6 +518,41 @@ export default function FinancesPage() {
                 </div>
               )}
             </div>
+
+            {editingExpense?.expenseType === "common" && editingExpense?.propertyType !== "land" && (
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <Label>Fournisseur</Label>
+                  <Link
+                    href="/suppliers"
+                    className="text-xs font-medium text-primary underline-offset-4 hover:underline"
+                  >
+                    Ajouter un fournisseur
+                  </Link>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+                  <Select value={expenseSupplierId} onValueChange={setExpenseSupplierId}>
+                    <SelectTrigger className="w-full sm:max-w-md">
+                      <SelectValue placeholder="Aucun fournisseur" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Aucun fournisseur</SelectItem>
+                      {suppliers.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {expenseSupplierId !== "__none__" && (
+                    <p className="text-sm text-muted-foreground">
+                      <span className="font-medium text-foreground">Contact :</span>{" "}
+                      {suppliers.find((s) => s.id === expenseSupplierId)?.contact ?? editingExpense?.supplierContact ?? "—"}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label>Commentaire</Label>

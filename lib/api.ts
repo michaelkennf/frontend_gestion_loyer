@@ -184,8 +184,20 @@ export async function deleteStudioApi(studioId: string) {
   return request(`/properties/studios/${studioId}`, { method: "DELETE" });
 }
 
+export async function addLandApi(payload: { address: string; size: number; monthlyRent: number }) {
+  return request("/properties/lands", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function updateLandApi(landId: string, payload: { address: string; size: number; monthlyRent: number }) {
+  return request(`/properties/lands/${landId}`, { method: "PUT", body: JSON.stringify(payload) });
+}
+
+export async function deleteLandApi(landId: string) {
+  return request(`/properties/lands/${landId}`, { method: "DELETE" });
+}
+
 export async function addPaymentApi(payload: {
-  propertyType: "house" | "building" | "studio";
+  propertyType: "house" | "building" | "studio" | "land";
   propertyId: string;
   paymentKind: "rental" | "monthly";
   tenantName: string;
@@ -238,6 +250,7 @@ export async function addExpenseApi(payload: {
   amount: number;
   comment?: string;
   date: string;
+  supplierId?: string;
 }) {
   return request("/expenses", { method: "POST", body: JSON.stringify(payload) });
 }
@@ -248,8 +261,21 @@ export async function updateExpenseApi(expenseId: string, payload: {
   comment?: string;
   date: string;
   apartmentNumber?: string;
+  supplierId?: string | null;
 }) {
   return request(`/expenses/${expenseId}`, { method: "PUT", body: JSON.stringify(payload) });
+}
+
+export async function addSupplierApi(payload: { name: string; contact: string }) {
+  return request<{ id: string; name: string; contact: string }>("/suppliers", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function updateSupplierApi(supplierId: string, payload: { name: string; contact: string }) {
+  return request<{ id: string; name: string; contact: string }>(`/suppliers/${supplierId}`, { method: "PUT", body: JSON.stringify(payload) });
+}
+
+export async function deleteSupplierApi(supplierId: string) {
+  return request<{ message: string }>(`/suppliers/${supplierId}`, { method: "DELETE" });
 }
 
 export async function deleteExpenseApi(expenseId: string) {

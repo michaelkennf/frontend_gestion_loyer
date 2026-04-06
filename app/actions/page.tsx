@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowUpFromLine, TrendingDown, PlusSquare, ArrowRight, Landmark } from "lucide-react";
+import { ArrowUpFromLine, TrendingDown, PlusSquare, ArrowRight, Landmark, Truck } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { useAppStore } from "@/lib/store";
 
@@ -41,6 +41,15 @@ const actions = [
     color: "bg-balance-bg",
     iconColor: "text-balance",
     border: "border-balance/20",
+  },
+  {
+    href: "/add-supplier",
+    icon: Truck,
+    title: "Enregistrer un fournisseur",
+    description: "Ajouter un fournisseur (nom et contact) pour les dépenses communes.",
+    color: "bg-muted",
+    iconColor: "text-foreground",
+    border: "border-border",
   },
 ];
 

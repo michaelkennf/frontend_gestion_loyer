@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -21,28 +21,32 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { floorDisplayLabel } from "@/lib/utils";
 
 const schema = z.object({
-  propertyType: z.enum(["house", "building", "studio"], { required_error: "Type requis" }),
+  propertyType: z.enum(["house", "building", "studio", "land"], { required_error: "Type requis" }),
   propertyId: z.string().min(1, "Sélectionnez une propriété"),
   paymentKind: z.enum(["rental", "monthly"], { required_error: "Type de paiement requis" }),
   tenantName: z.string().trim().min(2, "Nom du locataire requis"),
-  floor: z.coerce.number().int().min(1).optional(),
+  floor: z.coerce.number().int().min(0).optional(),
   apartmentNumber: z.coerce.number().int().min(1).optional(),
   month: z.string().optional(),
   monthsCount: z.coerce.number().int().min(1).optional(),
   amount: z.coerce.number().optional(),
   notes: z.string().optional(),
 }).superRefine((data, ctx) => {
-  if (data.propertyType === "house") {
-    if (!data.floor) {
+  if (data.propertyType === "house" || data.propertyType === "building") {
+    if (!Number.isInteger(data.floor)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Niveau requis", path: ["floor"] });
     }
     if (!data.apartmentNumber) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Appartement requis", path: ["apartmentNumber"] });
     }
   }
-  if (data.propertyType === "studio" && (!data.amount || data.amount <= 0)) {
+  if (
+    (data.propertyType === "studio" || data.propertyType === "land") &&
+    (!data.amount || data.amount <= 0)
+  ) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Le montant doit être positif", path: ["amount"] });
   }
   if (data.paymentKind === "monthly") {
@@ -59,7 +63,7 @@ type FormValues = z.infer<typeof schema>;
 
 export default function RegisterPaymentPage() {
   const router = useRouter();
-  const { houses, studios, refresh, user } = useAppStore();
+  const { houses, studios, lands, refresh, user } = useAppStore();
   const [contractFile, setContractFile] = useState<File | null>(null);
 
   const {
@@ -67,6 +71,7 @@ export default function RegisterPaymentPage() {
     handleSubmit,
     control,
     watch,
+    setValue,
     reset,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
@@ -87,23 +92,33 @@ export default function RegisterPaymentPage() {
   const propertyType = watch("propertyType");
   const propertyId = watch("propertyId");
   const floor = watch("floor");
-  const propertyList = propertyType === "house" || propertyType === "building"
-    ? houses
-    : propertyType === "studio"
-      ? studios
-      : [];
-  const selectedHouse = propertyType === "house" || propertyType === "building"
-    ? houses.find((h) => h.id === propertyId)
-    : undefined;
+  const propertyList =
+    propertyType === "house" || propertyType === "building"
+      ? houses
+      : propertyType === "studio"
+        ? studios
+        : propertyType === "land"
+          ? lands
+          : [];
+  const selectedHouse =
+    propertyType === "house" || propertyType === "building"
+      ? houses.find((h) => h.id === propertyId)
+      : undefined;
   const selectedLevel = selectedHouse?.layout?.find((l) => l.floor === floor);
 
   const currentMonth = new Date().toISOString().slice(0, 7);
 
+  useEffect(() => {
+    if (propertyType === "land" && propertyId) {
+      const l = lands.find((x) => x.id === propertyId);
+      if (l) setValue("amount", l.monthlyRent);
+    }
+  }, [propertyType, propertyId, lands, setValue]);
+
   async function onSubmit(values: FormValues) {
     if (user?.role !== "MANAGER") return toast.error("Action réservée au gestionnaire.");
     const selectedApartmentRent =
-      values.propertyType === "house"
-      || values.propertyType === "building"
+      values.propertyType === "house" || values.propertyType === "building"
         ? selectedHouse?.layout
             ?.find((l) => l.floor === values.floor)
             ?.apartments.find((a) => a.number === values.apartmentNumber)?.rentPrice
@@ -116,7 +131,10 @@ export default function RegisterPaymentPage() {
       tenantName: values.tenantName,
       month: values.paymentKind === "monthly" ? values.month : currentMonth,
       monthsCount: values.paymentKind === "rental" ? values.monthsCount : undefined,
-      amount: (values.propertyType === "house" || values.propertyType === "building") && selectedApartmentRent ? selectedApartmentRent : values.amount,
+      amount:
+        (values.propertyType === "house" || values.propertyType === "building") && selectedApartmentRent
+          ? selectedApartmentRent
+          : values.amount ?? 0,
       notes: values.notes,
       floor: values.propertyType === "house" || values.propertyType === "building" ? values.floor : undefined,
       apartmentNumber: values.propertyType === "house" || values.propertyType === "building" ? values.apartmentNumber : undefined,
@@ -160,6 +178,7 @@ export default function RegisterPaymentPage() {
                         <SelectItem value="house">Maison</SelectItem>
                         <SelectItem value="building">Immeuble</SelectItem>
                         <SelectItem value="studio">Studio</SelectItem>
+                        <SelectItem value="land">Terrain</SelectItem>
                       </SelectContent>
                     </Select>
                   )}
@@ -231,7 +250,9 @@ export default function RegisterPaymentPage() {
                           ) : (
                             propertyList.map((p) => (
                               <SelectItem key={p.id} value={p.id}>
-                                {(p as { address: string }).address}
+                                {propertyType === "land"
+                                  ? `${(p as { address: string }).address} · $${(p as { monthlyRent: number }).monthlyRent}/mois`
+                                  : (p as { address: string }).address}
                               </SelectItem>
                             ))
                           )}
@@ -253,14 +274,21 @@ export default function RegisterPaymentPage() {
                       name="floor"
                       control={control}
                       render={({ field }) => (
-                        <Select onValueChange={(v) => field.onChange(Number(v))} value={field.value ? String(field.value) : ""}>
+                        <Select
+                          onValueChange={(v) => field.onChange(Number(v))}
+                          value={Number.isInteger(field.value) ? String(field.value) : ""}
+                        >
                           <SelectTrigger className={errors.floor ? "border-destructive" : ""}>
                             <SelectValue placeholder="Sélectionner…" />
                           </SelectTrigger>
                           <SelectContent>
-                            {Array.from({ length: selectedHouse.floors }, (_, i) => i + 1).map((n) => (
-                              <SelectItem key={n} value={String(n)}>Niveau {n}</SelectItem>
-                            ))}
+                            {[...(selectedHouse.layout ?? [])]
+                              .sort((a, b) => a.floor - b.floor)
+                              .map((lvl) => (
+                                <SelectItem key={lvl.floor} value={String(lvl.floor)}>
+                                  {floorDisplayLabel(lvl.floor)}
+                                </SelectItem>
+                              ))}
                           </SelectContent>
                         </Select>
                       )}
@@ -273,7 +301,10 @@ export default function RegisterPaymentPage() {
                       name="apartmentNumber"
                       control={control}
                       render={({ field }) => (
-                        <Select onValueChange={(v) => field.onChange(Number(v))} value={field.value ? String(field.value) : ""}>
+                        <Select
+                          onValueChange={(v) => field.onChange(Number(v))}
+                          value={field.value != null && field.value !== "" ? String(field.value) : ""}
+                        >
                           <SelectTrigger className={errors.apartmentNumber ? "border-destructive" : ""}>
                             <SelectValue placeholder="Sélectionner…" />
                           </SelectTrigger>
@@ -350,6 +381,11 @@ export default function RegisterPaymentPage() {
                 {(propertyType === "house" || propertyType === "building") && (
                   <p className="text-xs text-muted-foreground">
                     Le montant est défini automatiquement selon l'appartement choisi.
+                  </p>
+                )}
+                {propertyType === "land" && (
+                  <p className="text-xs text-muted-foreground">
+                    Le montant est prérempli avec le prix de location du terrain ; vous pouvez l&apos;ajuster.
                   </p>
                 )}
                 {errors.amount && (

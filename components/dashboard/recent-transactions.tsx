@@ -7,6 +7,7 @@ import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { floorDisplayLabel } from "@/lib/utils";
 
 type Transaction =
   | { kind: "payment"; data: Payment }
@@ -76,8 +77,12 @@ export function RecentTransactions() {
             ? (tx.data as Payment).propertyLabel
             : (tx.data as Expense).propertyLabel;
           const sub = isPayment
-            ? `Loyer – ${(tx.data as Payment).paymentKind === "rental" ? `${(tx.data as Payment).monthsCount ?? 1} mois` : (tx.data as Payment).month}${((tx.data as Payment).propertyType === "house" || (tx.data as Payment).propertyType === "building") && (tx.data as Payment).apartmentNumber ? ` · Niv ${(tx.data as Payment).floor ?? "-"} / Apt ${(tx.data as Payment).apartmentNumber}` : ""}`
-            : `${(tx.data as Expense).expenseType === "common" ? "Commun" : "Privé"} – ${(tx.data as Expense).category}`;
+            ? `Loyer – ${(tx.data as Payment).paymentKind === "rental" ? `${(tx.data as Payment).monthsCount ?? 1} mois` : (tx.data as Payment).month}${(tx.data as Payment).propertyType === "land" ? " · Terrain" : ((tx.data as Payment).propertyType === "house" || (tx.data as Payment).propertyType === "building") && (tx.data as Payment).apartmentNumber ? ` · ${typeof (tx.data as Payment).floor === "number" ? floorDisplayLabel((tx.data as Payment).floor as number) : "Niv -"} / Apt ${(tx.data as Payment).apartmentNumber}` : ""}`
+            : `${(tx.data as Expense).expenseType === "common" ? "Commun" : "Privé"} – ${(tx.data as Expense).category}${
+                (tx.data as Expense).expenseType === "common" && (tx.data as Expense).supplierName
+                  ? ` · ${(tx.data as Expense).supplierName}`
+                  : ""
+              }`;
           const amount = tx.data.amount;
           const date = formatDate(tx.data.date);
           const key = `${tx.kind}-${tx.data.id}`;

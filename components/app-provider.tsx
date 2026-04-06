@@ -1,22 +1,32 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { AppContext, AppState, House, Studio, Payment, Expense, SessionUser } from "@/lib/store";
+import { AppContext, AppState, House, Studio, Land, Payment, Expense, SessionUser, Supplier } from "@/lib/store";
 import {
   getDashboardApi,
   addHouseApi,
   addStudioApi,
+  addLandApi,
   addPaymentApi,
   addExpenseApi,
+  addSupplierApi,
   addCommentApi,
   hasAuthState,
   onAuthChanged,
 } from "@/lib/api";
 import { getSession, refreshSession } from "@/lib/auth";
 
-type State = { user: SessionUser | null; houses: House[]; studios: Studio[]; payments: Payment[]; expenses: Expense[] };
+type State = {
+  user: SessionUser | null;
+  houses: House[];
+  studios: Studio[];
+  lands: Land[];
+  suppliers: Supplier[];
+  payments: Payment[];
+  expenses: Expense[];
+};
 
-const initialState: State = { user: null, houses: [], studios: [], payments: [], expenses: [] };
+const initialState: State = { user: null, houses: [], studios: [], lands: [], suppliers: [], payments: [], expenses: [] };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<State>({ ...initialState, user: getSession() });
@@ -35,8 +45,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
       return;
     }
-    const data = await getDashboardApi() as { houses: House[]; studios: Studio[]; payments: Payment[]; expenses: Expense[] };
-    setState({ user, houses: data.houses, studios: data.studios, payments: data.payments, expenses: data.expenses });
+    const data = await getDashboardApi() as {
+      houses: House[];
+      studios: Studio[];
+      lands?: Land[];
+      suppliers?: Supplier[];
+      payments: Payment[];
+      expenses: Expense[];
+    };
+    setState({
+      user,
+      houses: data.houses,
+      studios: data.studios,
+      lands: data.lands ?? [],
+      suppliers: data.suppliers ?? [],
+      payments: data.payments,
+      expenses: data.expenses,
+    });
     setLoading(false);
   }, []);
 
@@ -57,6 +82,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [refresh]);
   const addStudio = useCallback(async (s: Omit<Studio, "id">) => {
     await addStudioApi(s);
+    await refresh();
+  }, [refresh]);
+  const addLand = useCallback(async (l: Omit<Land, "id">) => {
+    await addLandApi(l);
     await refresh();
   }, [refresh]);
   const addPayment = useCallback(async (p: Omit<Payment, "id">) => {
@@ -84,7 +113,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       amount: e.amount,
       comment: e.comment,
       date: e.date,
+      supplierId: e.supplierId ?? undefined,
     });
+    await refresh();
+  }, [refresh]);
+  const addSupplier = useCallback(async (payload: { name: string; contact: string }) => {
+    await addSupplierApi(payload);
     await refresh();
   }, [refresh]);
   const addComment = useCallback(async (v: { transactionType: "payment" | "expense"; transactionId: string; content: string }) => {
@@ -98,8 +132,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     refresh,
     addHouse,
     addStudio,
+    addLand,
     addPayment,
     addExpense,
+    addSupplier,
     addComment,
   };
 

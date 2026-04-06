@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
@@ -48,12 +49,13 @@ const schema = z
     amount: z.coerce.number().positive("Le montant doit être positif"),
     comment: z.string().optional(),
     date: z.string().min(1, "Date requise"),
+    supplierId: z.string().optional(),
   })
   .superRefine((data, ctx) => {
-    if (data.propertyType !== "land" && !data.propertyId?.trim()) {
+    if (!data.propertyId?.trim()) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "Sélectionnez une propriété",
+        message: data.propertyType === "land" ? "Sélectionnez un terrain" : "Sélectionnez une propriété",
         path: ["propertyId"],
       });
     }
@@ -64,7 +66,7 @@ const schema = z
         path: ["apartmentNumber"],
       });
     }
-    if (data.category === "Autre" && !data.customCategory?.trim()) {
+    if (data.propertyType !== "land" && data.category === "Autre" && !data.customCategory?.trim()) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "Veuillez saisir la catégorie personnalisée",
@@ -77,19 +79,20 @@ type FormValues = z.infer<typeof schema>;
 
 export default function RegisterExpensePage() {
   const router = useRouter();
-  const { houses, studios, addExpense, user } = useAppStore();
+  const { houses, studios, lands, suppliers, addExpense, user } = useAppStore();
 
   const {
     register,
     handleSubmit,
     control,
     watch,
+    setValue,
     reset,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
-      expenseType: undefined,
+      expenseType: "common",
       propertyType: undefined,
       propertyId: "",
       apartmentNumber: "",
@@ -97,17 +100,23 @@ export default function RegisterExpensePage() {
       customCategory: "",
       comment: "",
       date: new Date().toISOString().slice(0, 10),
+      supplierId: "__none__",
     },
   });
 
   const expenseType = watch("expenseType");
   const propertyType = watch("propertyType");
   const category = watch("category");
-  const propertyList = propertyType === "house" || propertyType === "building"
-    ? houses
-    : propertyType === "studio"
-      ? studios
-      : [];
+  const supplierIdWatch = watch("supplierId");
+  const selectedSupplier = suppliers.find((s) => s.id === supplierIdWatch);
+  const propertyList =
+    propertyType === "house" || propertyType === "building"
+      ? houses
+      : propertyType === "studio"
+        ? studios
+        : propertyType === "land"
+          ? lands
+          : [];
   const categoryList = expenseType === "private" ? PRIVATE_CATEGORIES : COMMON_CATEGORIES;
 
   async function onSubmit(values: FormValues) {
@@ -115,24 +124,38 @@ export default function RegisterExpensePage() {
     const property =
       values.propertyType === "house" || values.propertyType === "building"
         ? houses.find((h) => h.id === values.propertyId)
-        : studios.find((s) => s.id === values.propertyId);
+        : values.propertyType === "studio"
+          ? studios.find((s) => s.id === values.propertyId)
+          : lands.find((l) => l.id === values.propertyId);
 
-    const propertyLabel = values.propertyType === "land"
-      ? "Terrain"
-      : property
-      ? (property as { address: string }).address
-      : "Propriété inconnue";
+    const propertyLabel =
+      values.propertyType === "land"
+        ? property
+          ? (property as { address: string }).address
+          : "Terrain"
+        : property
+          ? (property as { address: string }).address
+          : "Propriété inconnue";
+
+    const supplierId =
+      values.propertyType !== "land" &&
+      values.expenseType === "common" &&
+      values.supplierId &&
+      values.supplierId !== "__none__"
+        ? values.supplierId
+        : undefined;
 
     await addExpense({
-      expenseType: values.expenseType,
-      propertyId: values.propertyType === "land" ? undefined : values.propertyId,
+      expenseType: values.propertyType === "land" ? "common" : values.expenseType,
+      propertyId: values.propertyId,
       propertyType: values.propertyType,
       propertyLabel,
       apartmentNumber: values.apartmentNumber,
       category: values.category === "Autre" ? (values.customCategory ?? "").trim() : values.category,
       amount: values.amount,
-      comment: values.comment,
+      comment: values.propertyType === "land" ? undefined : values.comment,
       date: values.date,
+      supplierId,
     });
 
     toast.success("Dépense enregistrée avec succès.");
@@ -155,28 +178,30 @@ export default function RegisterExpensePage() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-              {/* Expense type */}
-              <div className="space-y-2">
-                <Label>Type de dépense</Label>
-                <Controller
-                  name="expenseType"
-                  control={control}
-                  render={({ field }) => (
-                    <Select onValueChange={field.onChange} value={field.value ?? ""}>
-                      <SelectTrigger className={errors.expenseType ? "border-destructive" : ""}>
-                        <SelectValue placeholder="Commune ou privée…" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="common">Commune (tout le bien)</SelectItem>
-                        <SelectItem value="private">Privée (appartement spécifique)</SelectItem>
-                      </SelectContent>
-                    </Select>
+              {/* Expense type — masqué pour le terrain (toujours saisi comme dépense globale) */}
+              {propertyType !== "land" && (
+                <div className="space-y-2">
+                  <Label>Type de dépense</Label>
+                  <Controller
+                    name="expenseType"
+                    control={control}
+                    render={({ field }) => (
+                      <Select onValueChange={field.onChange} value={field.value ?? ""}>
+                        <SelectTrigger className={errors.expenseType ? "border-destructive" : ""}>
+                          <SelectValue placeholder="Commune ou privée…" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="common">Commune (tout le bien)</SelectItem>
+                          <SelectItem value="private">Privée (appartement spécifique)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                  {errors.expenseType && (
+                    <p className="text-xs text-destructive">{errors.expenseType.message}</p>
                   )}
-                />
-                {errors.expenseType && (
-                  <p className="text-xs text-destructive">{errors.expenseType.message}</p>
-                )}
-              </div>
+                </div>
+              )}
 
               {/* Property type */}
               <div className="space-y-2">
@@ -185,7 +210,13 @@ export default function RegisterExpensePage() {
                   name="propertyType"
                   control={control}
                   render={({ field }) => (
-                    <Select onValueChange={field.onChange} value={field.value ?? ""}>
+                    <Select
+                      onValueChange={(v) => {
+                        field.onChange(v);
+                        if (v === "land") setValue("expenseType", "common");
+                      }}
+                      value={field.value ?? ""}
+                    >
                       <SelectTrigger className={errors.propertyType ? "border-destructive" : ""}>
                         <SelectValue placeholder="Maison ou studio…" />
                       </SelectTrigger>
@@ -203,20 +234,22 @@ export default function RegisterExpensePage() {
                 )}
               </div>
 
-              {/* Property */}
-              {propertyType && propertyType !== "land" && (
+              {/* Property / terrain */}
+              {propertyType && (
                 <div className="space-y-2">
-                  <Label>Propriété</Label>
+                  <Label>{propertyType === "land" ? "Terrain" : "Propriété"}</Label>
                   <Controller
                     name="propertyId"
                     control={control}
                     render={({ field }) => (
                       <Select onValueChange={field.onChange} value={field.value ?? ""}>
-                      <SelectTrigger className={errors.propertyId ? "border-destructive" : ""}>
+                        <SelectTrigger className={errors.propertyId ? "border-destructive" : ""}>
                           <SelectValue
                             placeholder={
                               propertyList.length === 0
-                                ? "Aucune propriété disponible"
+                                ? propertyType === "land"
+                                  ? "Aucun terrain enregistré"
+                                  : "Aucune propriété disponible"
                                 : "Sélectionner…"
                             }
                           />
@@ -224,12 +257,14 @@ export default function RegisterExpensePage() {
                         <SelectContent>
                           {propertyList.length === 0 ? (
                             <SelectItem value="_none" disabled>
-                              Aucune propriété enregistrée
+                              {propertyType === "land" ? "Enregistrez un terrain d’abord" : "Aucune propriété enregistrée"}
                             </SelectItem>
                           ) : (
                             propertyList.map((p) => (
                               <SelectItem key={p.id} value={p.id}>
-                                {(p as { address: string }).address}
+                                {propertyType === "land"
+                                  ? `${(p as { address: string }).address} · ${(p as { size: number }).size} m² · $${(p as { monthlyRent: number }).monthlyRent}/mois`
+                                  : (p as { address: string }).address}
                               </SelectItem>
                             ))
                           )}
@@ -262,10 +297,11 @@ export default function RegisterExpensePage() {
               {/* Category */}
               {propertyType === "land" ? (
                 <div className="space-y-2">
-                  <Label htmlFor="category">Nom de la dépense</Label>
-                  <Input
+                  <Label htmlFor="category">Description de la dépense</Label>
+                  <Textarea
                     id="category"
-                    placeholder="Ex: Débroussaillage, clôture, bornage..."
+                    placeholder="Ex. : débroussaillage, clôture, bornage, frais administratifs…"
+                    rows={3}
                     {...register("category")}
                     className={errors.category ? "border-destructive" : ""}
                   />
@@ -315,6 +351,51 @@ export default function RegisterExpensePage() {
                 </div>
               )}
 
+              {expenseType === "common" && propertyType !== "land" && (
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <Label>Fournisseur (dépense commune)</Label>
+                    <Link
+                      href="/suppliers"
+                      className="text-xs font-medium text-primary underline-offset-4 hover:underline"
+                    >
+                      Ajouter un fournisseur
+                    </Link>
+                  </div>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+                    <Controller
+                      name="supplierId"
+                      control={control}
+                      render={({ field }) => (
+                        <Select onValueChange={field.onChange} value={field.value ?? "__none__"}>
+                          <SelectTrigger className="w-full sm:max-w-md">
+                            <SelectValue placeholder="Aucun fournisseur" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">Aucun fournisseur</SelectItem>
+                            {suppliers.map((s) => (
+                              <SelectItem key={s.id} value={s.id}>
+                                {s.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    />
+                    {selectedSupplier && (
+                      <p className="text-sm text-muted-foreground">
+                        <span className="font-medium text-foreground">Contact :</span> {selectedSupplier.contact}
+                      </p>
+                    )}
+                  </div>
+                  {suppliers.length === 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      Aucun fournisseur enregistré. Utilisez le lien ci-dessus pour en créer un.
+                    </p>
+                  )}
+                </div>
+              )}
+
               {/* Amount */}
               <div className="space-y-2">
                 <Label htmlFor="amount">Montant ($)</Label>
@@ -346,16 +427,17 @@ export default function RegisterExpensePage() {
                 )}
               </div>
 
-              {/* Comment */}
-              <div className="space-y-2">
-                <Label htmlFor="comment">Commentaire (optionnel)</Label>
-                <Textarea
-                  id="comment"
-                  placeholder="Précisions sur la dépense…"
-                  rows={3}
-                  {...register("comment")}
-                />
-              </div>
+              {propertyType !== "land" && (
+                <div className="space-y-2">
+                  <Label htmlFor="comment">Commentaire (optionnel)</Label>
+                  <Textarea
+                    id="comment"
+                    placeholder="Précisions sur la dépense…"
+                    rows={3}
+                    {...register("comment")}
+                  />
+                </div>
+              )}
 
               <div className="flex gap-3 pt-2">
                 <Button type="submit" disabled={isSubmitting}>

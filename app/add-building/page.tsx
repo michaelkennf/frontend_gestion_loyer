@@ -12,10 +12,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { floorDisplayLabel } from "@/lib/utils";
 
 const schema = z.object({
   address: z.string().min(3, "Adresse requise (min. 3 caractères)"),
-  floors: z.coerce.number().int().min(1, "Au moins 1 étage"),
+  floors: z.coerce.number().int().min(1, "Au moins 1 niveau (rez-de-chaussée compris)"),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -58,7 +59,7 @@ export default function AddBuildingPage() {
   function buildLevels(count: number) {
     setLevels(
       Array.from({ length: count }, (_, i) => ({
-        floor: i + 1,
+        floor: i,
         apartmentsCount: 1,
         rents: [null],
       }))
@@ -94,7 +95,7 @@ export default function AddBuildingPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="floors">Nombre d&apos;étages</Label>
+                <Label htmlFor="floors">Nombre de niveaux (rez-de-chaussée compris)</Label>
                 <Input
                   id="floors"
                   type="number"
@@ -103,6 +104,9 @@ export default function AddBuildingPage() {
                   {...register("floors")}
                   className={errors.floors ? "border-destructive" : ""}
                 />
+                <p className="text-xs text-muted-foreground">
+                  Le premier niveau est le rez-de-chaussée (étage 0), puis le 1er étage, etc.
+                </p>
                 {errors.floors && <p className="text-xs text-destructive">{errors.floors.message}</p>}
                 <Button type="button" variant="outline" className="mt-2" onClick={() => buildLevels(Number(floors || 0))}>
                   Générer les niveaux
@@ -110,10 +114,10 @@ export default function AddBuildingPage() {
               </div>
 
               {levels.map((level, idx) => (
-                <div key={level.floor} className="rounded-lg border border-border p-4 space-y-3">
-                  <p className="text-sm font-semibold">Niveau {level.floor}</p>
+                <div key={`${level.floor}-${idx}`} className="rounded-lg border border-border p-4 space-y-3">
+                  <p className="text-sm font-semibold">{floorDisplayLabel(level.floor)}</p>
                   <div className="space-y-2">
-                    <Label>Nombre d&apos;appartements au niveau {level.floor}</Label>
+                    <Label>Nombre d&apos;appartements — {floorDisplayLabel(level.floor)}</Label>
                     <Input
                       type="number"
                       min={1}
