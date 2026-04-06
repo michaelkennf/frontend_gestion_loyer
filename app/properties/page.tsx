@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
-import { useAppStore } from "@/lib/store";
+import { useAppStore, type House } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,6 +17,59 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { floorDisplayLabel } from "@/lib/utils";
+
+function HousePropertyCard({
+  h,
+  isManager,
+  kind,
+  onEdit,
+  onDeleted,
+}: {
+  h: House;
+  isManager: boolean;
+  kind: "maison" | "immeuble";
+  onEdit: () => void;
+  onDeleted: () => Promise<void>;
+}) {
+  const confirmDelete = kind === "maison" ? "Supprimer cette maison ?" : "Supprimer cet immeuble ?";
+  return (
+    <div className="rounded-lg border border-border p-4">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-sm font-semibold">{h.address}</p>
+          <p className="text-xs text-muted-foreground">{h.floors} niveaux · {h.apartments} appartements</p>
+        </div>
+        {isManager && (
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={onEdit}>
+              Modifier
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={async () => {
+                if (!window.confirm(confirmDelete)) return;
+                await onDeleted();
+              }}
+            >
+              Supprimer
+            </Button>
+          </div>
+        )}
+      </div>
+      <div className="mt-3 space-y-2">
+        {h.layout?.map((lvl) => (
+          <div key={`${h.id}-${lvl.floor}`} className="rounded-md bg-muted/40 p-2">
+            <p className="text-xs font-medium">{floorDisplayLabel(lvl.floor)}</p>
+            <p className="text-xs text-muted-foreground">
+              {lvl.apartments.map((a) => `Apt ${a.number}: $${a.rentPrice}`).join(" · ")}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function PropertiesPage() {
   const { houses, studios, lands, user, refresh } = useAppStore();
@@ -36,6 +89,8 @@ export default function PropertiesPage() {
   const [initialLandSnapshot, setInitialLandSnapshot] = useState("");
 
   const editingHouse = houses.find((h) => h.id === editingHouseId) ?? null;
+  const maisons = houses.filter((h) => !h.isBuilding);
+  const immeubles = houses.filter((h) => h.isBuilding);
   const editingStudio = studios.find((s) => s.id === editingStudioId) ?? null;
   const editingLand = lands.find((l) => l.id === editingLandId) ?? null;
 
@@ -89,7 +144,7 @@ export default function PropertiesPage() {
     await refresh();
     setEditingHouseId(null);
     setInitialHouseSnapshot("");
-    toast.success("Maison mise à jour.");
+    toast.success(editingHouse?.isBuilding ? "Immeuble mis à jour." : "Maison mise à jour.");
   }
 
   async function saveStudio() {
@@ -161,55 +216,47 @@ export default function PropertiesPage() {
   }
 
   return (
-    <DashboardLayout title="Propriétés" description="Maisons, studios et terrains">
+    <DashboardLayout title="Propriétés" description="Maisons, immeubles, studios et terrains">
       <div className="space-y-6">
         <div className="rounded-xl border border-border bg-card p-4">
           <h3 className="mb-3 text-sm font-semibold">Maisons</h3>
           <div className="space-y-3">
-            {houses.map((h) => (
-              <div key={h.id} className="rounded-lg border border-border p-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-sm font-semibold">{h.address}</p>
-                    <p className="text-xs text-muted-foreground">{h.floors} niveaux · {h.apartments} appartements</p>
-                  </div>
-                  {isManager && (
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => openHouseEditor(h.id)}
-                      >
-                        Modifier
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        onClick={async () => {
-                          if (!window.confirm("Supprimer cette maison ?")) return;
-                          await deleteHouseApi(h.id);
-                          await refresh();
-                          toast.success("Maison supprimée.");
-                        }}
-                      >
-                        Supprimer
-                      </Button>
-                    </div>
-                  )}
-                </div>
-                <div className="mt-3 space-y-2">
-                  {h.layout?.map((lvl) => (
-                    <div key={`${h.id}-${lvl.floor}`} className="rounded-md bg-muted/40 p-2">
-                      <p className="text-xs font-medium">{floorDisplayLabel(lvl.floor)}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {lvl.apartments.map((a) => `Apt ${a.number}: $${a.rentPrice}`).join(" · ")}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
+            {maisons.map((h) => (
+              <HousePropertyCard
+                key={h.id}
+                h={h}
+                isManager={isManager}
+                kind="maison"
+                onEdit={() => openHouseEditor(h.id)}
+                onDeleted={async () => {
+                  await deleteHouseApi(h.id);
+                  await refresh();
+                  toast.success("Maison supprimée.");
+                }}
+              />
             ))}
-            {houses.length === 0 && <p className="text-sm text-muted-foreground">Aucune maison enregistrée.</p>}
+            {maisons.length === 0 && <p className="text-sm text-muted-foreground">Aucune maison enregistrée.</p>}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-border bg-card p-4">
+          <h3 className="mb-3 text-sm font-semibold">Immeubles</h3>
+          <div className="space-y-3">
+            {immeubles.map((h) => (
+              <HousePropertyCard
+                key={h.id}
+                h={h}
+                isManager={isManager}
+                kind="immeuble"
+                onEdit={() => openHouseEditor(h.id)}
+                onDeleted={async () => {
+                  await deleteHouseApi(h.id);
+                  await refresh();
+                  toast.success("Immeuble supprimé.");
+                }}
+              />
+            ))}
+            {immeubles.length === 0 && <p className="text-sm text-muted-foreground">Aucun immeuble enregistré.</p>}
           </div>
         </div>
 
@@ -295,7 +342,7 @@ export default function PropertiesPage() {
       <Dialog open={Boolean(editingHouse)} onOpenChange={(v) => !v && closeHouseEditorWithConfirm()}>
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Modifier maison</DialogTitle>
+            <DialogTitle>{editingHouse?.isBuilding ? "Modifier immeuble" : "Modifier maison"}</DialogTitle>
             <DialogDescription>Mettre à jour l'adresse, niveaux, appartements et loyers.</DialogDescription>
           </DialogHeader>
 

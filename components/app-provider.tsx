@@ -76,7 +76,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return unsubscribe;
   }, [refresh]);
 
-  const addHouse = useCallback(async (h: Omit<House, "id" | "floors" | "apartments" | "rentPrice"> & { levels: { floor: number; apartments: { number: number; rentPrice: number }[] }[] }) => {
+  const addHouse = useCallback(async (h: Omit<House, "id" | "floors" | "apartments" | "rentPrice" | "layout"> & { levels: { floor: number; apartments: { number: number; rentPrice: number }[] }[]; isBuilding?: boolean }) => {
     await addHouseApi(h);
     await refresh();
   }, [refresh]);

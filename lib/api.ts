@@ -157,6 +157,7 @@ export async function getDashboardApi() {
 export async function addHouseApi(payload: {
   address: string;
   levels: { floor: number; apartments: { number: number; rentPrice: number }[] }[];
+  isBuilding?: boolean;
 }) {
   return request("/properties/houses", { method: "POST", body: JSON.stringify(payload) });
 }

@@ -21,6 +21,8 @@ export type House = {
   apartments: number;
   rentPrice: number;
   layout: HouseLevel[];
+  /** true = immeuble, false ou absent = maison */
+  isBuilding?: boolean;
 };
 
 export type Studio = {
@@ -95,7 +97,7 @@ export type AppState = {
   payments: Payment[];
   expenses: Expense[];
   refresh: () => Promise<void>;
-  addHouse: (h: Omit<House, "id" | "floors" | "apartments" | "rentPrice"> & { levels: HouseLevel[] }) => Promise<void>;
+  addHouse: (h: Omit<House, "id" | "floors" | "apartments" | "rentPrice" | "layout"> & { levels: HouseLevel[]; isBuilding?: boolean }) => Promise<void>;
   addStudio: (s: Omit<Studio, "id">) => Promise<void>;
   addLand: (l: Omit<Land, "id">) => Promise<void>;
   addPayment: (p: Omit<Payment, "id">) => Promise<void>;

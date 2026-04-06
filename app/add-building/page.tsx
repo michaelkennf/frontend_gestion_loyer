@@ -42,6 +42,7 @@ export default function AddBuildingPage() {
     }
     await addHouse({
       address: values.address,
+      isBuilding: true,
       levels: levels.map((l) => ({
         floor: l.floor,
         apartments: Array.from({ length: l.apartmentsCount }, (_, i) => ({
