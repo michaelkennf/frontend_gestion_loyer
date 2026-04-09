@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { AppContext, AppState, House, Studio, Land, Payment, Expense, SessionUser, Supplier } from "@/lib/store";
+import { AppContext, AppState, House, Studio, Land, Payment, Expense, SessionUser, Supplier, RentalDeposit } from "@/lib/store";
 import {
   getDashboardApi,
   addHouseApi,
@@ -11,6 +11,9 @@ import {
   addExpenseApi,
   addSupplierApi,
   addCommentApi,
+  upsertRentalDepositApi,
+  deleteRentalDepositApi,
+  createRentalDepositTransactionApi,
   hasAuthState,
   onAuthChanged,
 } from "@/lib/api";
@@ -24,9 +27,10 @@ type State = {
   suppliers: Supplier[];
   payments: Payment[];
   expenses: Expense[];
+  rentalDeposits: RentalDeposit[];
 };
 
-const initialState: State = { user: null, houses: [], studios: [], lands: [], suppliers: [], payments: [], expenses: [] };
+const initialState: State = { user: null, houses: [], studios: [], lands: [], suppliers: [], payments: [], expenses: [], rentalDeposits: [] };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<State>({ ...initialState, user: getSession() });
@@ -52,6 +56,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       suppliers?: Supplier[];
       payments: Payment[];
       expenses: Expense[];
+      rentalDeposits?: RentalDeposit[];
     };
     setState({
       user,
@@ -61,6 +66,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       suppliers: data.suppliers ?? [],
       payments: data.payments,
       expenses: data.expenses,
+      rentalDeposits: data.rentalDeposits ?? [],
     });
     setLoading(false);
   }, []);
@@ -126,6 +132,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     await refresh();
   }, [refresh]);
 
+  const upsertRentalDeposit = useCallback(async (payload: {
+    propertyType: "house" | "building" | "studio" | "land";
+    propertyId: string;
+    tenantName: string;
+    balance: number;
+    notes?: string;
+    floor?: number;
+    apartmentNumber?: number;
+  }) => {
+    await upsertRentalDepositApi(payload);
+    await refresh();
+  }, [refresh]);
+  const deleteRentalDeposit = useCallback(async (id: string) => {
+    await deleteRentalDepositApi(id);
+    await refresh();
+  }, [refresh]);
+  const debitRentalDeposit = useCallback(async (payload: { id: string; kind: "expense" | "refund"; amount: number; comment?: string }) => {
+    await createRentalDepositTransactionApi(payload.id, { kind: payload.kind, amount: payload.amount, comment: payload.comment });
+    await refresh();
+  }, [refresh]);
+
   const value: AppState = {
     loading,
     ...state,
@@ -137,6 +164,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     addExpense,
     addSupplier,
     addComment,
+    upsertRentalDeposit,
+    deleteRentalDeposit,
+    debitRentalDeposit,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

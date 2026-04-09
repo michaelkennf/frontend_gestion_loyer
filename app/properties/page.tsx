@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { useAppStore, type House } from "@/lib/store";
 import { Button } from "@/components/ui/button";
@@ -17,37 +18,74 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { floorDisplayLabel } from "@/lib/utils";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+function monthToIndex(month: string): number | null {
+  if (!/^\d{4}-\d{2}$/.test(month)) return null;
+  const [y, m] = month.split("-").map(Number);
+  if (!y || !m || m < 1 || m > 12) return null;
+  return y * 12 + (m - 1);
+}
+
+function currentMonthIndex(): number {
+  const d = new Date();
+  return d.getFullYear() * 12 + d.getMonth();
+}
 
 function HousePropertyCard({
   h,
   isManager,
   kind,
+  isOverdue,
   onEdit,
   onDeleted,
+  onOpenDetails,
 }: {
   h: House;
   isManager: boolean;
   kind: "maison" | "immeuble";
+  isOverdue: boolean;
   onEdit: () => void;
   onDeleted: () => Promise<void>;
+  onOpenDetails: () => void;
 }) {
   const confirmDelete = kind === "maison" ? "Supprimer cette maison ?" : "Supprimer cet immeuble ?";
   return (
-    <div className="rounded-lg border border-border p-4">
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpenDetails}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") onOpenDetails();
+      }}
+      className={[
+        "rounded-lg border p-4 cursor-pointer transition-colors",
+        isOverdue ? "border-destructive/60 bg-destructive/5" : "border-border hover:bg-muted/30",
+      ].join(" ")}
+    >
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-sm font-semibold">{h.address}</p>
+          <p className={["text-sm font-semibold", isOverdue ? "text-destructive" : ""].join(" ")}>{h.address}</p>
           <p className="text-xs text-muted-foreground">{h.floors} niveaux · {h.apartments} appartements</p>
+          {isOverdue && <p className="mt-1 text-xs font-medium text-destructive">Retard de paiement</p>}
         </div>
         {isManager && (
           <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={onEdit}>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit();
+              }}
+            >
               Modifier
             </Button>
             <Button
               size="sm"
               variant="destructive"
-              onClick={async () => {
+              onClick={async (e) => {
+                e.stopPropagation();
                 if (!window.confirm(confirmDelete)) return;
                 await onDeleted();
               }}
@@ -72,8 +110,12 @@ function HousePropertyCard({
 }
 
 export default function PropertiesPage() {
-  const { houses, studios, lands, user, refresh } = useAppStore();
+  const router = useRouter();
+  const { houses, studios, lands, payments, user, refresh } = useAppStore();
   const isManager = user?.role === "MANAGER";
+  const [searchAddress, setSearchAddress] = useState("");
+  const [propertyTypeFilter, setPropertyTypeFilter] = useState<"all" | "house" | "building" | "studio" | "land">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "overdue" | "ok">("all");
   const [editingHouseId, setEditingHouseId] = useState<string | null>(null);
   const [editingStudioId, setEditingStudioId] = useState<string | null>(null);
   const [editingLandId, setEditingLandId] = useState<string | null>(null);
@@ -93,6 +135,72 @@ export default function PropertiesPage() {
   const immeubles = houses.filter((h) => h.isBuilding);
   const editingStudio = studios.find((s) => s.id === editingStudioId) ?? null;
   const editingLand = lands.find((l) => l.id === editingLandId) ?? null;
+
+  const nowMonth = currentMonthIndex();
+  function houseIsOverdue(h: House): boolean {
+    const layout = h.layout ?? [];
+    const apts = layout.flatMap((lvl) => lvl.apartments.map((a) => ({ floor: lvl.floor, apartmentNumber: a.number })));
+    if (apts.length === 0) return false;
+
+    const housePayments = payments.filter((p) => p.propertyId === h.id);
+    return apts.some(({ floor, apartmentNumber }) => {
+      const aptPayments = housePayments.filter((p) => p.floor === floor && p.apartmentNumber === apartmentNumber);
+      let maxCovered: number | null = null;
+      for (const p of aptPayments) {
+        const start = monthToIndex(p.month);
+        if (start === null) continue;
+        const count = p.paymentKind === "rental" ? (p.monthsCount ?? 1) : 1;
+        const end = start + Math.max(1, count) - 1;
+        if (maxCovered === null || end > maxCovered) maxCovered = end;
+      }
+      if (maxCovered === null) return true;
+      return maxCovered < nowMonth;
+    });
+  }
+
+  function simplePropertyIsOverdue(propertyId: string): boolean {
+    const ps = payments.filter((p) => p.propertyId === propertyId);
+    let maxCovered: number | null = null;
+    for (const p of ps) {
+      const start = monthToIndex(p.month);
+      if (start === null) continue;
+      const count = p.paymentKind === "rental" ? (p.monthsCount ?? 1) : 1;
+      const end = start + Math.max(1, count) - 1;
+      if (maxCovered === null || end > maxCovered) maxCovered = end;
+    }
+    if (maxCovered === null) return true;
+    return maxCovered < nowMonth;
+  }
+
+  const q = searchAddress.trim().toLowerCase();
+  const maisonsFiltered = maisons
+    .filter((h) => (propertyTypeFilter === "all" ? true : propertyTypeFilter === "house"))
+    .filter((h) => (q ? h.address.toLowerCase().includes(q) : true))
+    .filter((h) => {
+      const overdue = houseIsOverdue(h);
+      return statusFilter === "all" ? true : statusFilter === "overdue" ? overdue : !overdue;
+    });
+  const immeublesFiltered = immeubles
+    .filter((h) => (propertyTypeFilter === "all" ? true : propertyTypeFilter === "building"))
+    .filter((h) => (q ? h.address.toLowerCase().includes(q) : true))
+    .filter((h) => {
+      const overdue = houseIsOverdue(h);
+      return statusFilter === "all" ? true : statusFilter === "overdue" ? overdue : !overdue;
+    });
+  const studiosFiltered = studios
+    .filter((s) => (propertyTypeFilter === "all" ? true : propertyTypeFilter === "studio"))
+    .filter((s) => (q ? s.address.toLowerCase().includes(q) : true))
+    .filter((s) => {
+      const overdue = simplePropertyIsOverdue(s.id);
+      return statusFilter === "all" ? true : statusFilter === "overdue" ? overdue : !overdue;
+    });
+  const landsFiltered = lands
+    .filter((l) => (propertyTypeFilter === "all" ? true : propertyTypeFilter === "land"))
+    .filter((l) => (q ? l.address.toLowerCase().includes(q) : true))
+    .filter((l) => {
+      const overdue = simplePropertyIsOverdue(l.id);
+      return statusFilter === "all" ? true : statusFilter === "overdue" ? overdue : !overdue;
+    });
 
   function openHouseEditor(houseId: string) {
     const h = houses.find((x) => x.id === houseId);
@@ -219,69 +327,127 @@ export default function PropertiesPage() {
     <DashboardLayout title="Propriétés" description="Maisons, immeubles, studios et terrains">
       <div className="space-y-6">
         <div className="rounded-xl border border-border bg-card p-4">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+            <div className="space-y-2">
+              <Label>Recherche (adresse)</Label>
+              <Input value={searchAddress} onChange={(e) => setSearchAddress(e.target.value)} placeholder="Rechercher par adresse" />
+            </div>
+            <div className="space-y-2">
+              <Label>Type de propriété</Label>
+              <Select value={propertyTypeFilter} onValueChange={(v) => setPropertyTypeFilter(v as any)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Tous" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tous</SelectItem>
+                  <SelectItem value="house">Maisons</SelectItem>
+                  <SelectItem value="building">Immeubles</SelectItem>
+                  <SelectItem value="studio">Studios</SelectItem>
+                  <SelectItem value="land">Terrains</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Statut paiement</Label>
+              <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as any)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Tous" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tous</SelectItem>
+                  <SelectItem value="overdue">En retard</SelectItem>
+                  <SelectItem value="ok">À jour</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-border bg-card p-4">
           <h3 className="mb-3 text-sm font-semibold">Maisons</h3>
           <div className="space-y-3">
-            {maisons.map((h) => (
+            {maisonsFiltered.map((h) => (
               <HousePropertyCard
                 key={h.id}
                 h={h}
                 isManager={isManager}
                 kind="maison"
+                isOverdue={houseIsOverdue(h)}
                 onEdit={() => openHouseEditor(h.id)}
                 onDeleted={async () => {
                   await deleteHouseApi(h.id);
                   await refresh();
                   toast.success("Maison supprimée.");
                 }}
+                onOpenDetails={() => router.push(`/properties/${h.id}`)}
               />
             ))}
-            {maisons.length === 0 && <p className="text-sm text-muted-foreground">Aucune maison enregistrée.</p>}
+            {maisonsFiltered.length === 0 && <p className="text-sm text-muted-foreground">Aucune maison.</p>}
           </div>
         </div>
 
         <div className="rounded-xl border border-border bg-card p-4">
           <h3 className="mb-3 text-sm font-semibold">Immeubles</h3>
           <div className="space-y-3">
-            {immeubles.map((h) => (
+            {immeublesFiltered.map((h) => (
               <HousePropertyCard
                 key={h.id}
                 h={h}
                 isManager={isManager}
                 kind="immeuble"
+                isOverdue={houseIsOverdue(h)}
                 onEdit={() => openHouseEditor(h.id)}
                 onDeleted={async () => {
                   await deleteHouseApi(h.id);
                   await refresh();
                   toast.success("Immeuble supprimé.");
                 }}
+                onOpenDetails={() => router.push(`/properties/${h.id}`)}
               />
             ))}
-            {immeubles.length === 0 && <p className="text-sm text-muted-foreground">Aucun immeuble enregistré.</p>}
+            {immeublesFiltered.length === 0 && <p className="text-sm text-muted-foreground">Aucun immeuble.</p>}
           </div>
         </div>
 
         <div className="rounded-xl border border-border bg-card p-4">
           <h3 className="mb-3 text-sm font-semibold">Studios</h3>
           <div className="space-y-3">
-            {studios.map((s) => (
-              <div key={s.id} className="flex items-center justify-between rounded-lg border border-border p-4">
+            {studiosFiltered.map((s) => (
+              <div
+                key={s.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => router.push(`/properties/${s.id}`)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") router.push(`/properties/${s.id}`);
+                }}
+                className={[
+                  "flex items-center justify-between rounded-lg border p-4 cursor-pointer transition-colors",
+                  simplePropertyIsOverdue(s.id) ? "border-destructive/60 bg-destructive/5" : "border-border hover:bg-muted/30",
+                ].join(" ")}
+              >
                 <div>
-                  <p className="text-sm font-semibold">{s.address}</p>
+                  <p className={["text-sm font-semibold", simplePropertyIsOverdue(s.id) ? "text-destructive" : ""].join(" ")}>{s.address}</p>
                   <p className="text-xs text-muted-foreground">Loyer mensuel: ${s.monthlyRent}</p>
+                  {simplePropertyIsOverdue(s.id) && <p className="mt-1 text-xs font-medium text-destructive">Retard de paiement</p>}
                 </div>
                 {isManager && (
                   <div className="flex gap-2">
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => openStudioEditor(s.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openStudioEditor(s.id);
+                      }}
                     >
                       Modifier
                     </Button>
                     <Button
                       size="sm"
                       variant="destructive"
-                      onClick={async () => {
+                      onClick={async (e) => {
+                        e.stopPropagation();
                         if (!window.confirm("Supprimer ce studio ?")) return;
                         await deleteStudioApi(s.id);
                         await refresh();
@@ -294,34 +460,51 @@ export default function PropertiesPage() {
                 )}
               </div>
             ))}
-            {studios.length === 0 && <p className="text-sm text-muted-foreground">Aucun studio enregistré.</p>}
+            {studiosFiltered.length === 0 && <p className="text-sm text-muted-foreground">Aucun studio.</p>}
           </div>
         </div>
 
         <div className="rounded-xl border border-border bg-card p-4">
           <h3 className="mb-3 text-sm font-semibold">Terrains</h3>
           <div className="space-y-3">
-            {lands.map((l) => (
-              <div key={l.id} className="flex items-center justify-between rounded-lg border border-border p-4">
+            {landsFiltered.map((l) => (
+              <div
+                key={l.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => router.push(`/properties/${l.id}`)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") router.push(`/properties/${l.id}`);
+                }}
+                className={[
+                  "flex items-center justify-between rounded-lg border p-4 cursor-pointer transition-colors",
+                  simplePropertyIsOverdue(l.id) ? "border-destructive/60 bg-destructive/5" : "border-border hover:bg-muted/30",
+                ].join(" ")}
+              >
                 <div>
-                  <p className="text-sm font-semibold">{l.address}</p>
+                  <p className={["text-sm font-semibold", simplePropertyIsOverdue(l.id) ? "text-destructive" : ""].join(" ")}>{l.address}</p>
                   <p className="text-xs text-muted-foreground">
                     {l.size} m² · Loyer : ${l.monthlyRent}/mois
                   </p>
+                  {simplePropertyIsOverdue(l.id) && <p className="mt-1 text-xs font-medium text-destructive">Retard de paiement</p>}
                 </div>
                 {isManager && (
                   <div className="flex gap-2">
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => openLandEditor(l.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openLandEditor(l.id);
+                      }}
                     >
                       Modifier
                     </Button>
                     <Button
                       size="sm"
                       variant="destructive"
-                      onClick={async () => {
+                      onClick={async (e) => {
+                        e.stopPropagation();
                         if (!window.confirm("Supprimer ce terrain ?")) return;
                         await deleteLandApi(l.id);
                         await refresh();
@@ -334,7 +517,7 @@ export default function PropertiesPage() {
                 )}
               </div>
             ))}
-            {lands.length === 0 && <p className="text-sm text-muted-foreground">Aucun terrain enregistré.</p>}
+            {landsFiltered.length === 0 && <p className="text-sm text-muted-foreground">Aucun terrain.</p>}
           </div>
         </div>
       </div>

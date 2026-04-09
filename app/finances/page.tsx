@@ -25,6 +25,11 @@ export default function FinancesPage() {
   const editingPayment = payments.find((p) => p.id === editingPaymentId) ?? null;
   const editingExpense = expenses.find((e) => e.id === editingExpenseId) ?? null;
 
+  const [searchAddress, setSearchAddress] = useState("");
+  const [propertyTypeFilter, setPropertyTypeFilter] = useState<"all" | "house" | "building" | "studio" | "land">("all");
+  const [movementFilter, setMovementFilter] = useState<"all" | "payments" | "expenses">("all");
+  const [paymentKindFilter, setPaymentKindFilter] = useState<"all" | "rental" | "monthly">("all");
+
   // Snapshots for "unsaved changes" confirmation (similar to Propriétés modal UX)
   const [initialPaymentSnapshot, setInitialPaymentSnapshot] = useState<string>("");
   const [initialExpenseSnapshot, setInitialExpenseSnapshot] = useState<string>("");
@@ -238,13 +243,84 @@ export default function FinancesPage() {
     toast.success("Sortie modifiée.");
   }
 
+  const q = searchAddress.trim().toLowerCase();
+  const filteredPayments = payments.filter((p) => {
+    if (q && !String(p.propertyLabel ?? "").toLowerCase().includes(q)) return false;
+    if (propertyTypeFilter !== "all" && p.propertyType !== propertyTypeFilter) return false;
+    if (paymentKindFilter !== "all" && p.paymentKind !== paymentKindFilter) return false;
+    return true;
+  });
+  const filteredExpenses = expenses.filter((e) => {
+    if (q && !String(e.propertyLabel ?? "").toLowerCase().includes(q)) return false;
+    if (propertyTypeFilter !== "all" && e.propertyType !== propertyTypeFilter) return false;
+    return true;
+  });
+
   return (
     <DashboardLayout title="Finances" description="Entrées et sorties détaillées">
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div className="space-y-4">
+        <div className="rounded-xl border border-border bg-card p-4">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
+            <div className="space-y-2">
+              <Label>Recherche (adresse)</Label>
+              <Input
+                value={searchAddress}
+                onChange={(e) => setSearchAddress(e.target.value)}
+                placeholder="Rechercher par adresse de propriété"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Type de propriété</Label>
+              <Select value={propertyTypeFilter} onValueChange={(v) => setPropertyTypeFilter(v as any)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Tous" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tous</SelectItem>
+                  <SelectItem value="house">Maison</SelectItem>
+                  <SelectItem value="building">Immeuble</SelectItem>
+                  <SelectItem value="studio">Studio</SelectItem>
+                  <SelectItem value="land">Terrain</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Mouvement</Label>
+              <Select value={movementFilter} onValueChange={(v) => setMovementFilter(v as any)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Tout" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tout</SelectItem>
+                  <SelectItem value="payments">Entrées (paiements)</SelectItem>
+                  <SelectItem value="expenses">Sorties (dépenses)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Paiements</Label>
+              <Select value={paymentKindFilter} onValueChange={(v) => setPaymentKindFilter(v as any)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Tous" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tous</SelectItem>
+                  <SelectItem value="rental">Loyer locatif</SelectItem>
+                  <SelectItem value="monthly">Paiement mensuel</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <div className="rounded-xl border border-border bg-card p-4">
           <h3 className="mb-3 text-sm font-semibold">Entrées (Loyers)</h3>
           <div className="space-y-2">
-            {payments.map((p) => (
+            {(movementFilter === "expenses" ? [] : filteredPayments).map((p) => (
               <div key={p.id} className="rounded-md border border-border p-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -295,14 +371,19 @@ export default function FinancesPage() {
                 </div>
               </div>
             ))}
-            {payments.length === 0 && <p className="text-sm text-muted-foreground">Aucune entrée.</p>}
+            {movementFilter !== "expenses" && filteredPayments.length === 0 && (
+              <p className="text-sm text-muted-foreground">Aucune entrée.</p>
+            )}
+            {movementFilter === "expenses" && (
+              <p className="text-sm text-muted-foreground">Filtré sur les sorties (dépenses).</p>
+            )}
           </div>
         </div>
 
         <div className="rounded-xl border border-border bg-card p-4">
           <h3 className="mb-3 text-sm font-semibold">Sorties (Dépenses)</h3>
           <div className="space-y-2">
-            {expenses.map((e) => (
+            {(movementFilter === "payments" ? [] : filteredExpenses).map((e) => (
               <div key={e.id} className="rounded-md border border-border p-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -341,8 +422,14 @@ export default function FinancesPage() {
                 </div>
               </div>
             ))}
-            {expenses.length === 0 && <p className="text-sm text-muted-foreground">Aucune sortie.</p>}
+            {movementFilter !== "payments" && filteredExpenses.length === 0 && (
+              <p className="text-sm text-muted-foreground">Aucune sortie.</p>
+            )}
+            {movementFilter === "payments" && (
+              <p className="text-sm text-muted-foreground">Filtré sur les entrées (paiements).</p>
+            )}
           </div>
+        </div>
         </div>
       </div>
 

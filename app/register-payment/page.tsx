@@ -26,12 +26,10 @@ import { floorDisplayLabel } from "@/lib/utils";
 const schema = z.object({
   propertyType: z.enum(["house", "building", "studio", "land"], { required_error: "Type requis" }),
   propertyId: z.string().min(1, "Sélectionnez une propriété"),
-  paymentKind: z.enum(["rental", "monthly"], { required_error: "Type de paiement requis" }),
   tenantName: z.string().trim().min(2, "Nom du locataire requis"),
   floor: z.coerce.number().int().min(0).optional(),
   apartmentNumber: z.coerce.number().int().min(1).optional(),
-  month: z.string().optional(),
-  monthsCount: z.coerce.number().int().min(1).optional(),
+  month: z.string().min(1, "Mois requis"),
   amount: z.coerce.number().optional(),
   notes: z.string().optional(),
 }).superRefine((data, ctx) => {
@@ -49,13 +47,8 @@ const schema = z.object({
   ) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Le montant doit être positif", path: ["amount"] });
   }
-  if (data.paymentKind === "monthly") {
-    if (!data.month || !/^\d{4}-\d{2}$/.test(data.month)) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Format AAAA-MM requis", path: ["month"] });
-    }
-  }
-  if (data.paymentKind === "rental" && (!data.monthsCount || data.monthsCount < 1)) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Nombre de mois requis", path: ["monthsCount"] });
+  if (!data.month || !/^\d{4}-\d{2}$/.test(data.month)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Format AAAA-MM requis", path: ["month"] });
   }
 });
 
@@ -79,10 +72,8 @@ export default function RegisterPaymentPage() {
     defaultValues: {
       propertyType: undefined,
       propertyId: "",
-      paymentKind: "monthly",
       tenantName: "",
       month: new Date().toISOString().slice(0, 7),
-      monthsCount: 1,
       floor: undefined,
       apartmentNumber: undefined,
       notes: "",
@@ -127,10 +118,9 @@ export default function RegisterPaymentPage() {
     await addPaymentApi({
       propertyId: values.propertyId,
       propertyType: values.propertyType,
-      paymentKind: values.paymentKind,
+      paymentKind: "monthly",
       tenantName: values.tenantName,
-      month: values.paymentKind === "monthly" ? values.month : currentMonth,
-      monthsCount: values.paymentKind === "rental" ? values.monthsCount : undefined,
+      month: values.month,
       amount:
         (values.propertyType === "house" || values.propertyType === "building") && selectedApartmentRent
           ? selectedApartmentRent
@@ -188,40 +178,17 @@ export default function RegisterPaymentPage() {
                 )}
               </div>
 
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Type de paiement</Label>
-                  <Controller
-                    name="paymentKind"
-                    control={control}
-                    render={({ field }) => (
-                      <Select onValueChange={field.onChange} value={field.value ?? ""}>
-                        <SelectTrigger className={errors.paymentKind ? "border-destructive" : ""}>
-                          <SelectValue placeholder="Sélectionner…" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="rental">Loyer locatif</SelectItem>
-                          <SelectItem value="monthly">Paiement mensuel</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    )}
-                  />
-                  {errors.paymentKind && (
-                    <p className="text-xs text-destructive">{errors.paymentKind.message}</p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="tenantName">Nom du locataire</Label>
-                  <Input
-                    id="tenantName"
-                    placeholder="Ex: Jean Mukendi"
-                    {...register("tenantName")}
-                    className={errors.tenantName ? "border-destructive" : ""}
-                  />
-                  {errors.tenantName && (
-                    <p className="text-xs text-destructive">{errors.tenantName.message}</p>
-                  )}
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="tenantName">Nom du locataire</Label>
+                <Input
+                  id="tenantName"
+                  placeholder="Ex: Jean Mukendi"
+                  {...register("tenantName")}
+                  className={errors.tenantName ? "border-destructive" : ""}
+                />
+                {errors.tenantName && (
+                  <p className="text-xs text-destructive">{errors.tenantName.message}</p>
+                )}
               </div>
 
               {/* Property */}
@@ -303,7 +270,7 @@ export default function RegisterPaymentPage() {
                       render={({ field }) => (
                         <Select
                           onValueChange={(v) => field.onChange(Number(v))}
-                          value={field.value != null && field.value !== "" ? String(field.value) : ""}
+                          value={typeof field.value === "number" ? String(field.value) : ""}
                         >
                           <SelectTrigger className={errors.apartmentNumber ? "border-destructive" : ""}>
                             <SelectValue placeholder="Sélectionner…" />
@@ -324,36 +291,19 @@ export default function RegisterPaymentPage() {
                 </div>
               )}
 
-              {watch("paymentKind") === "monthly" ? (
-                <div className="space-y-2">
-                  <Label htmlFor="month">Mois de référence</Label>
-                  <Input
-                    id="month"
-                    type="month"
-                    defaultValue={currentMonth}
-                    {...register("month")}
-                    className={errors.month ? "border-destructive" : ""}
-                  />
-                  {errors.month && (
-                    <p className="text-xs text-destructive">{errors.month.message}</p>
-                  )}
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <Label htmlFor="monthsCount">Nombre de mois</Label>
-                  <Input
-                    id="monthsCount"
-                    type="number"
-                    min={1}
-                    step="1"
-                    {...register("monthsCount")}
-                    className={errors.monthsCount ? "border-destructive" : ""}
-                  />
-                  {errors.monthsCount && (
-                    <p className="text-xs text-destructive">{errors.monthsCount.message}</p>
-                  )}
-                </div>
-              )}
+              <div className="space-y-2">
+                <Label htmlFor="month">Mois de référence</Label>
+                <Input
+                  id="month"
+                  type="month"
+                  defaultValue={currentMonth}
+                  {...register("month")}
+                  className={errors.month ? "border-destructive" : ""}
+                />
+                {errors.month && (
+                  <p className="text-xs text-destructive">{errors.month.message}</p>
+                )}
+              </div>
 
               {/* Amount */}
               <div className="space-y-2">

@@ -79,6 +79,19 @@ export type Expense = {
   comments?: CommentItem[];
 };
 
+export type RentalDeposit = {
+  id: string;
+  propertyId: string;
+  propertyType: "house" | "building" | "studio" | "land";
+  propertyLabel: string;
+  tenantName: string;
+  balance: number;
+  floor?: number | null;
+  apartmentNumber?: number | null;
+  notes?: string;
+  updatedAt: string;
+};
+
 export type SessionUser = {
   id: string;
   username: string;
@@ -96,6 +109,7 @@ export type AppState = {
   suppliers: Supplier[];
   payments: Payment[];
   expenses: Expense[];
+  rentalDeposits: RentalDeposit[];
   refresh: () => Promise<void>;
   addHouse: (h: Omit<House, "id" | "floors" | "apartments" | "rentPrice" | "layout"> & { levels: HouseLevel[]; isBuilding?: boolean }) => Promise<void>;
   addStudio: (s: Omit<Studio, "id">) => Promise<void>;
@@ -104,6 +118,17 @@ export type AppState = {
   addExpense: (e: Omit<Expense, "id">) => Promise<void>;
   addSupplier: (payload: { name: string; contact: string }) => Promise<void>;
   addComment: (v: { transactionType: "payment" | "expense"; transactionId: string; content: string }) => Promise<void>;
+  upsertRentalDeposit: (payload: {
+    propertyType: "house" | "building" | "studio" | "land";
+    propertyId: string;
+    tenantName: string;
+    balance: number;
+    notes?: string;
+    floor?: number;
+    apartmentNumber?: number;
+  }) => Promise<void>;
+  deleteRentalDeposit: (id: string) => Promise<void>;
+  debitRentalDeposit: (payload: { id: string; kind: "expense" | "refund"; amount: number; comment?: string }) => Promise<void>;
 };
 
 export const AppContext = createContext<AppState | null>(null);

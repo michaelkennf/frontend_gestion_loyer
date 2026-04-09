@@ -31,6 +31,7 @@ const navItems = [
   { type: "separator", label: "Propriétés", roles: ["MANAGER", "OWNER"] },
   { href: "/properties", label: "Liste des propriétés", icon: ListTree, roles: ["OWNER", "MANAGER"] },
   { href: "/add-property", label: "Ajouter une propriété", icon: PlusSquare, roles: ["MANAGER"] },
+  { href: "/rental-deposits", label: "Garantie locative", icon: Building, roles: ["OWNER", "MANAGER"] },
   { type: "separator", label: "Finances", roles: ["MANAGER", "OWNER"] },
   { href: "/finances", label: "Entrées / Sorties", icon: ReceiptText, roles: ["OWNER", "MANAGER"] },
   { href: "/register-payment", label: "Enregistrer un loyer", icon: ArrowUpFromLine, roles: ["MANAGER"] },

@@ -32,3 +32,5 @@ export function getSession(): SessionUser | null {
   const raw = localStorage.getItem(SESSION_KEY);
   return raw ? (JSON.parse(raw) as SessionUser) : null;
 }
+
+export type { SessionUser };

@@ -2,6 +2,7 @@
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { SummaryCards } from "@/components/dashboard/summary-cards";
+import { RentalDepositBalanceCard } from "@/components/dashboard/rental-deposit-balance-card";
 import { MonthlyChart } from "@/components/dashboard/monthly-chart";
 import { RecentTransactions } from "@/components/dashboard/recent-transactions";
 import { PropertyOverview } from "@/components/dashboard/property-overview";
@@ -14,7 +15,12 @@ export default function DashboardPage() {
     >
       <div className="space-y-6">
         {/* KPI Cards */}
-        <SummaryCards />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+          <div className="sm:col-span-3">
+            <SummaryCards />
+          </div>
+          <RentalDepositBalanceCard />
+        </div>
 
         {/* Chart + Property overview */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">

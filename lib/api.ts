@@ -154,6 +154,30 @@ export async function getDashboardApi() {
   return request("/dashboard");
 }
 
+export async function upsertRentalDepositApi(payload: {
+  propertyType: "house" | "building" | "studio" | "land";
+  propertyId: string;
+  tenantName: string;
+  balance: number;
+  notes?: string;
+  floor?: number;
+  apartmentNumber?: number;
+}) {
+  return request("/rental-deposits", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function deleteRentalDepositApi(id: string) {
+  return request(`/rental-deposits/${id}`, { method: "DELETE" });
+}
+
+export async function createRentalDepositTransactionApi(depositId: string, payload: {
+  kind: "expense" | "refund";
+  amount: number;
+  comment?: string;
+}) {
+  return request(`/rental-deposits/${depositId}/transactions`, { method: "POST", body: JSON.stringify(payload) });
+}
+
 export async function addHouseApi(payload: {
   address: string;
   levels: { floor: number; apartments: { number: number; rentPrice: number }[] }[];

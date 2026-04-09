@@ -263,7 +263,7 @@ export default function RegisterExpensePage() {
                             propertyList.map((p) => (
                               <SelectItem key={p.id} value={p.id}>
                                 {propertyType === "land"
-                                  ? `${(p as { address: string }).address} · ${(p as { size: number }).size} m² · $${(p as { monthlyRent: number }).monthlyRent}/mois`
+                                  ? `${(p as unknown as { address: string; size: number; monthlyRent: number }).address} · ${(p as unknown as { address: string; size: number; monthlyRent: number }).size} m² · $${(p as unknown as { address: string; size: number; monthlyRent: number }).monthlyRent}/mois`
                                   : (p as { address: string }).address}
                               </SelectItem>
                             ))
