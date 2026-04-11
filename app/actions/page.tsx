@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowUpFromLine, TrendingDown, PlusSquare, ArrowRight, Landmark, Truck } from "lucide-react";
+import { ArrowUpFromLine, TrendingDown, PlusSquare, ArrowRight, Landmark, Truck, Shield } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { useAppStore } from "@/lib/store";
 
@@ -32,6 +32,15 @@ const actions = [
     color: "bg-muted",
     iconColor: "text-foreground",
     border: "border-border",
+  },
+  {
+    href: "/rental-deposits",
+    icon: Shield,
+    title: "Garantie locative",
+    description: "Voir les garanties par propriété et appartement, dépenses ou remises sur la garantie.",
+    color: "bg-balance-bg",
+    iconColor: "text-balance",
+    border: "border-balance/20",
   },
   {
     href: "/add-property",
