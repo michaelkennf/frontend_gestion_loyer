@@ -16,6 +16,15 @@ import { floorDisplayLabel } from "@/lib/utils";
 
 const API_ORIGIN = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api").replace(/\/api$/, "");
 
+function formatDate(iso: string) {
+  // Même rendu que dans `components/dashboard/recent-transactions.tsx`
+  return new Date(iso).toLocaleDateString("fr-FR", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
 export default function FinancesPage() {
   const { payments, expenses, houses, suppliers, user, refresh } = useAppStore();
   const isManager = user?.role === "MANAGER";
@@ -389,7 +398,7 @@ export default function FinancesPage() {
                   <div>
                     <p className="text-sm font-medium">{e.propertyLabel}</p>
                     <p className="text-xs text-muted-foreground">
-                      {e.expenseType === "common" ? "Publique" : "Privée"} · {e.category} · ${e.amount}
+                      {e.expenseType === "common" ? "Publique" : "Privée"} · {e.category} · ${e.amount} · {formatDate(e.date)}
                       {e.apartmentNumber ? ` · Apt ${e.apartmentNumber}` : ""}
                       {e.expenseType === "common" && e.supplierName
                         ? ` · Fournisseur : ${e.supplierName}${e.supplierContact ? ` (${e.supplierContact})` : ""}`

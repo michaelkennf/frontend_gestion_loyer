@@ -135,6 +135,14 @@ export default function PropertiesPage() {
   const immeubles = houses.filter((h) => h.isBuilding);
   const editingStudio = studios.find((s) => s.id === editingStudioId) ?? null;
   const editingLand = lands.find((l) => l.id === editingLandId) ?? null;
+  const houseBaseFloor = editingHouse?.isBuilding ? 0 : 1;
+
+  function renumberLevels(
+    prev: { floor: number; apartments: { number: number; rentPrice: number | null }[] }[],
+    baseFloor: number
+  ) {
+    return prev.map((l, idx) => ({ ...l, floor: baseFloor + idx }));
+  }
 
   const nowMonth = currentMonthIndex();
   function houseIsOverdue(h: House): boolean {
@@ -538,7 +546,12 @@ export default function PropertiesPage() {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setLevels((prev) => [...prev, { floor: prev.length + 1, apartments: [{ number: 1, rentPrice: null }] }])}
+                onClick={() =>
+                  setLevels((prev) => [
+                    ...prev,
+                    { floor: houseBaseFloor + prev.length, apartments: [{ number: 1, rentPrice: null }] },
+                  ])
+                }
               >
                 Ajouter niveau
               </Button>
@@ -551,7 +564,7 @@ export default function PropertiesPage() {
                     if (prev.length === 0) return prev;
                     const last = prev[prev.length - 1];
                     const duplicated = {
-                      floor: prev.length + 1,
+                      floor: houseBaseFloor + prev.length,
                       apartments: last.apartments.map((a, i) => ({ number: i + 1, rentPrice: a.rentPrice })),
                     };
                     return [...prev, duplicated];
@@ -570,7 +583,9 @@ export default function PropertiesPage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => setLevels((prev) => prev.filter((_, i) => i !== lvlIdx).map((l, i) => ({ ...l, floor: i + 1 })))}
+                    onClick={() =>
+                      setLevels((prev) => renumberLevels(prev.filter((_, i) => i !== lvlIdx), houseBaseFloor))
+                    }
                   >
                     Retirer niveau
                   </Button>
