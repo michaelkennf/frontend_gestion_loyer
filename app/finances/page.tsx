@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { floorDisplayLabel } from "@/lib/utils";
+import { ExpandableText } from "@/components/ui/expandable-text";
 
 const API_ORIGIN = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api").replace(/\/api$/, "");
 
@@ -343,6 +344,12 @@ export default function FinancesPage() {
                           : ""}
                     </p>
                     <p className="text-xs text-muted-foreground">Locataire: {p.tenantName || "-"}</p>
+                    {p.notes?.trim() && (
+                      <div className="mt-1">
+                        <p className="text-xs font-medium text-foreground">Commentaire:</p>
+                        <ExpandableText text={p.notes} />
+                      </div>
+                    )}
                     {p.contractFileUrl && (
                       <a
                         href={`${API_ORIGIN}${p.contractFileUrl}`}
@@ -404,6 +411,12 @@ export default function FinancesPage() {
                         ? ` · Fournisseur : ${e.supplierName}${e.supplierContact ? ` (${e.supplierContact})` : ""}`
                         : ""}
                     </p>
+                    {e.comment?.trim() && (
+                      <div className="mt-1">
+                        <p className="text-xs font-medium text-foreground">Commentaire:</p>
+                        <ExpandableText text={e.comment} />
+                      </div>
+                    )}
                   </div>
                   {isManager && (
                     <div className="flex gap-2">

@@ -4,7 +4,15 @@ const PUBLIC_PATHS = ["/login"];
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  if (pathname.startsWith("/_next") || pathname.startsWith("/favicon")) return NextResponse.next();
+  const isStaticAsset =
+    pathname.startsWith("/_next") ||
+    pathname.startsWith("/favicon") ||
+    pathname === "/manifest.webmanifest" ||
+    pathname === "/sw.js" ||
+    pathname === "/offline.html" ||
+    /\.[a-zA-Z0-9]+$/.test(pathname);
+
+  if (isStaticAsset) return NextResponse.next();
 
   const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
   const isAuthed = req.cookies.get("rent_auth")?.value === "1";

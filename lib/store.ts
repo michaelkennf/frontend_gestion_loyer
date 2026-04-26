@@ -102,6 +102,9 @@ export type SessionUser = {
 
 export type AppState = {
   loading: boolean;
+  isOnline: boolean;
+  pendingSyncCount: number;
+  syncingOfflineQueue: boolean;
   user: SessionUser | null;
   houses: House[];
   studios: Studio[];

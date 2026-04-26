@@ -1,16 +1,48 @@
 "use client";
 
 import type { SessionUser } from "@/lib/store";
+import {
+  addOfflineMutation,
+  countOfflineMutations,
+  deleteOfflineMutations,
+  listOfflineMutations,
+  type OfflineMutation,
+  type SerializedBody,
+  type OfflineFormDataEntry,
+} from "@/lib/offline-queue-db";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 const TOKEN_KEY = "rent-app-token";
 const REFRESH_TOKEN_KEY = "rent-app-refresh-token";
 const AUTH_DEBUG = process.env.NEXT_PUBLIC_AUTH_DEBUG === "1" || process.env.NODE_ENV !== "production";
 const AUTH_CHANGED_EVENT = "rent-auth-changed";
+const OFFLINE_QUEUE_EVENT = "rent-offline-queue-changed";
+const DASHBOARD_CACHE_KEY = "rent-dashboard-cache-v1";
 
 function notifyAuthChanged() {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new Event(AUTH_CHANGED_EVENT));
+}
+
+function notifyOfflineQueueChanged() {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(OFFLINE_QUEUE_EVENT));
+}
+
+export async function getOfflineQueueCount() {
+  if (typeof window === "undefined" || !("indexedDB" in window)) return 0;
+  try {
+    return await countOfflineMutations();
+  } catch {
+    return 0;
+  }
+}
+
+export function onOfflineQueueChanged(callback: () => void) {
+  if (typeof window === "undefined") return () => {};
+  const handler = () => callback();
+  window.addEventListener(OFFLINE_QUEUE_EVENT, handler);
+  return () => window.removeEventListener(OFFLINE_QUEUE_EVENT, handler);
 }
 
 export function getToken() {
@@ -26,6 +58,22 @@ export function hasAuthState() {
 function getRefreshToken() {
   if (typeof window === "undefined") return null;
   return localStorage.getItem(REFRESH_TOKEN_KEY);
+}
+
+function cacheDashboardData(data: unknown) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(DASHBOARD_CACHE_KEY, JSON.stringify(data));
+}
+
+function readCachedDashboardData<T>() {
+  if (typeof window === "undefined") return null;
+  const raw = localStorage.getItem(DASHBOARD_CACHE_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
 }
 
 export function setToken(token: string | null) {
@@ -61,18 +109,111 @@ export function clearAuthState() {
   notifyAuthChanged();
 }
 
-async function request<T>(path: string, init?: RequestInit, retry = true): Promise<T> {
+function canQueueOffline(path: string, method?: string) {
+  if (!method || method === "GET") return false;
+  if (!["POST", "PUT", "PATCH", "DELETE"].includes(method)) return false;
+  return (
+    path.startsWith("/properties") ||
+    path.startsWith("/payments") ||
+    path.startsWith("/expenses") ||
+    path.startsWith("/suppliers") ||
+    path.startsWith("/rental-deposits") ||
+    path.startsWith("/comments")
+  );
+}
+
+async function serializeBody(body: RequestInit["body"]): Promise<SerializedBody> {
+  if (!body) return { kind: "none" };
+  if (typeof body === "string") return { kind: "json", value: body };
+  if (body instanceof FormData) {
+    const entries: OfflineFormDataEntry[] = [];
+    for (const [key, value] of body.entries()) {
+      if (typeof value === "string") {
+        entries.push({ key, type: "text", value });
+        continue;
+      }
+      entries.push({
+        key,
+        type: "file",
+        name: value.name || "upload.bin",
+        mimeType: value.type || "application/octet-stream",
+        file: value,
+      });
+    }
+    return { kind: "form-data", entries };
+  }
+  throw new Error("Type de requete non pris en charge en mode hors ligne.");
+}
+
+function deserializeBody(body: SerializedBody): RequestInit["body"] | undefined {
+  if (body.kind === "none") return undefined;
+  if (body.kind === "json") return body.value;
+  const formData = new FormData();
+  for (const entry of body.entries) {
+    if (entry.type === "text") {
+      formData.append(entry.key, entry.value);
+      continue;
+    }
+    formData.append(entry.key, entry.file, entry.name);
+  }
+  return formData;
+}
+
+async function enqueueOfflineMutation(path: string, method: OfflineMutation["method"], body: SerializedBody) {
+  const mutationId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  await addOfflineMutation({
+    id: mutationId,
+    createdAt: Date.now(),
+    path,
+    method,
+    body,
+  });
+  notifyOfflineQueueChanged();
+  return mutationId;
+}
+
+async function rawFetch(path: string, init?: RequestInit, idempotencyKey?: string) {
   const token = getToken();
   const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData;
-  const res = await fetch(`${API_BASE}${path}`, {
+  return fetch(`${API_BASE}${path}`, {
     ...init,
     cache: "no-store",
     headers: {
       ...(isFormData ? {} : { "Content-Type": "application/json" }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(idempotencyKey ? { "X-Idempotency-Key": idempotencyKey } : {}),
       ...(init?.headers || {}),
     },
   });
+}
+
+async function request<T>(path: string, init?: RequestInit, retry = true): Promise<T> {
+  const method = (init?.method || "GET").toUpperCase();
+  const shouldAttachIdempotency = canQueueOffline(path, method);
+  const requestIdempotencyKey = shouldAttachIdempotency ? `${Date.now()}-${Math.random().toString(36).slice(2, 12)}` : undefined;
+  let res: Response;
+  try {
+    res = await rawFetch(path, init, requestIdempotencyKey);
+  } catch {
+    if (method === "GET" && path === "/dashboard") {
+      const cached = readCachedDashboardData<T>();
+      if (cached) return cached;
+    }
+    if (canQueueOffline(path, method)) {
+      const serializedBody = await serializeBody(init?.body);
+      await addOfflineMutation({
+        id: requestIdempotencyKey!,
+        createdAt: Date.now(),
+        path,
+        method: method as OfflineMutation["method"],
+        body: serializedBody,
+      });
+      notifyOfflineQueueChanged();
+      return { queuedOffline: true } as T;
+    }
+    throw new Error("Connexion indisponible.");
+  }
+
   if (res.status === 401 && retry && path !== "/auth/login") {
     const refreshToken = getRefreshToken();
     if (refreshToken) {
@@ -104,7 +245,44 @@ async function request<T>(path: string, init?: RequestInit, retry = true): Promi
     });
   }
   if (!res.ok) throw new Error(data.message || "Erreur API");
+  if (method === "GET" && path === "/dashboard") {
+    cacheDashboardData(data);
+  }
   return data as T;
+}
+
+export async function syncOfflineQueue() {
+  if (typeof window === "undefined" || !window.navigator.onLine) return;
+  if (!("indexedDB" in window)) return;
+  const token = getToken();
+  if (!token) return;
+  const queue = await listOfflineMutations();
+  if (queue.length === 0) return;
+
+  const toDelete: string[] = [];
+  for (const item of queue) {
+    try {
+      const response = await rawFetch(item.path, {
+        method: item.method,
+        body: deserializeBody(item.body),
+      }, item.id);
+      if (response.status === 401) {
+        break;
+      }
+      if (!response.ok && response.status < 500) {
+        // Skip invalid payloads to avoid blocking the full queue.
+        toDelete.push(item.id);
+        continue;
+      }
+      if (response.ok) {
+        toDelete.push(item.id);
+      }
+    } catch {
+      break;
+    }
+  }
+  await deleteOfflineMutations(toDelete);
+  notifyOfflineQueueChanged();
 }
 
 export async function loginApi(username: string, password: string) {

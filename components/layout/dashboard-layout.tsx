@@ -13,7 +13,7 @@ interface DashboardLayoutProps {
 
 export function DashboardLayout({ children, title, description }: DashboardLayoutProps) {
   const router = useRouter();
-  const { user, loading } = useAppStore();
+  const { user, loading, isOnline, pendingSyncCount, syncingOfflineQueue } = useAppStore();
 
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
@@ -45,6 +45,17 @@ export function DashboardLayout({ children, title, description }: DashboardLayou
 
         {/* Page content */}
         <main className="flex-1 px-4 pt-20 pb-8 lg:px-8 lg:pt-8 lg:pb-10">
+          {(!isOnline || pendingSyncCount > 0 || syncingOfflineQueue) && (
+            <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              {!isOnline
+                ? `Mode hors ligne actif. ${
+                    pendingSyncCount > 0 ? `${pendingSyncCount} action(s) en attente de synchronisation.` : "Les nouvelles actions seront enregistrees localement."
+                  }`
+                : syncingOfflineQueue
+                  ? "Synchronisation des actions hors ligne en cours..."
+                  : `${pendingSyncCount} action(s) hors ligne en attente de synchronisation.`}
+            </div>
+          )}
           {/* Mobile page title */}
           <div className="mb-5 lg:hidden">
             <h1 className="text-xl font-semibold text-foreground">{title}</h1>

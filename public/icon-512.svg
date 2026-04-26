@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="LocaPro icon">
+  <rect width="512" height="512" rx="96" fill="#0f172a" />
+  <g fill="#ffffff">
+    <rect x="118" y="146" width="276" height="236" rx="20" />
+    <rect x="156" y="190" width="42" height="42" rx="6" fill="#0f172a" />
+    <rect x="235" y="190" width="42" height="42" rx="6" fill="#0f172a" />
+    <rect x="314" y="190" width="42" height="42" rx="6" fill="#0f172a" />
+    <rect x="156" y="257" width="42" height="42" rx="6" fill="#0f172a" />
+    <rect x="235" y="257" width="42" height="42" rx="6" fill="#0f172a" />
+    <rect x="314" y="257" width="42" height="42" rx="6" fill="#0f172a" />
+    <rect x="219" y="321" width="74" height="61" rx="10" fill="#0f172a" />
+  </g>
+</svg>

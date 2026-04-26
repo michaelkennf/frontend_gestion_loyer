@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { ExpandableText } from "@/components/ui/expandable-text";
 import { toast } from "sonner";
 import { floorDisplayLabel } from "@/lib/utils";
 
@@ -106,10 +107,29 @@ export function RecentTransactions() {
               <div className="flex-1 min-w-0">
                 <p className="truncate text-sm font-medium text-foreground">{label}</p>
                 <p className="truncate text-xs text-muted-foreground">{sub}</p>
+                {isPayment && (tx.data as Payment).notes?.trim() && (
+                  <div className="pt-0.5">
+                    <p className="text-xs font-medium text-foreground">Commentaire:</p>
+                    <ExpandableText text={(tx.data as Payment).notes ?? ""} maxLength={90} />
+                  </div>
+                )}
+                {!isPayment && (tx.data as Expense).comment?.trim() && (
+                  <div className="pt-0.5">
+                    <p className="text-xs font-medium text-foreground">Commentaire:</p>
+                    <ExpandableText text={(tx.data as Expense).comment ?? ""} maxLength={90} />
+                  </div>
+                )}
                 {!!tx.data.comments?.length && (
-                  <p className="truncate text-xs text-muted-foreground">
-                    {tx.data.comments[tx.data.comments.length - 1]?.author}: {tx.data.comments[tx.data.comments.length - 1]?.content}
-                  </p>
+                  <div className="pt-0.5">
+                    <p className="text-xs font-medium text-muted-foreground">
+                      Commentaire owner: {tx.data.comments[tx.data.comments.length - 1]?.author}
+                    </p>
+                    <ExpandableText
+                      text={tx.data.comments[tx.data.comments.length - 1]?.content ?? ""}
+                      maxLength={90}
+                      className="text-muted-foreground"
+                    />
+                  </div>
                 )}
               </div>
               <div className="text-right shrink-0">

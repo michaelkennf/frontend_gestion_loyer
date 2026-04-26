@@ -16,6 +16,9 @@ import {
   createRentalDepositTransactionApi,
   hasAuthState,
   onAuthChanged,
+  getOfflineQueueCount,
+  onOfflineQueueChanged,
+  syncOfflineQueue,
 } from "@/lib/api";
 import { getSession, refreshSession } from "@/lib/auth";
 
@@ -35,6 +38,9 @@ const initialState: State = { user: null, houses: [], studios: [], lands: [], su
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<State>({ ...initialState, user: getSession() });
   const [loading, setLoading] = useState(true);
+  const [isOnline, setIsOnline] = useState<boolean>(typeof window === "undefined" ? true : window.navigator.onLine);
+  const [pendingSyncCount, setPendingSyncCount] = useState(0);
+  const [syncingOfflineQueue, setSyncingOfflineQueue] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -80,6 +86,45 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       refresh().catch(() => setLoading(false));
     });
     return unsubscribe;
+  }, [refresh]);
+
+  useEffect(() => {
+    const updateQueueCount = async () => {
+      setPendingSyncCount(await getOfflineQueueCount());
+    };
+    void updateQueueCount();
+
+    const unsubscribeQueue = onOfflineQueueChanged(updateQueueCount);
+    const onOnline = async () => {
+      setIsOnline(true);
+      setSyncingOfflineQueue(true);
+      try {
+        await syncOfflineQueue();
+        await updateQueueCount();
+        await refresh();
+      } catch {
+        // Keep app usable even if sync fails.
+      } finally {
+        setSyncingOfflineQueue(false);
+      }
+    };
+    const onOffline = () => setIsOnline(false);
+
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+
+    void (async () => {
+      const count = await getOfflineQueueCount();
+      if (window.navigator.onLine && count > 0) {
+        await onOnline();
+      }
+    })();
+
+    return () => {
+      unsubscribeQueue();
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
+    };
   }, [refresh]);
 
   const addHouse = useCallback(async (h: Omit<House, "id" | "floors" | "apartments" | "rentPrice" | "layout"> & { levels: { floor: number; apartments: { number: number; rentPrice: number }[] }[]; isBuilding?: boolean }) => {
@@ -155,6 +200,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const value: AppState = {
     loading,
+    isOnline,
+    pendingSyncCount,
+    syncingOfflineQueue,
     ...state,
     refresh,
     addHouse,

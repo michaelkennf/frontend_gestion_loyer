@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { useAppStore } from "@/lib/store";
 import { floorDisplayLabel } from "@/lib/utils";
+import { ExpandableText } from "@/components/ui/expandable-text";
 
 function monthLabel(month: string) {
   return month && /^\d{4}-\d{2}$/.test(month) ? month : "-";
@@ -78,6 +79,12 @@ export default function PropertyDetailsPage() {
                     {typeof p.floor === "number" && p.apartmentNumber ? ` · ${floorDisplayLabel(p.floor)} / Apt ${p.apartmentNumber}` : ""}
                   </p>
                   <p className="text-xs text-muted-foreground">Locataire: {p.tenantName || "-"}</p>
+                  {p.notes?.trim() && (
+                    <div className="mt-1">
+                      <p className="text-xs font-medium text-foreground">Commentaire:</p>
+                      <ExpandableText text={p.notes} />
+                    </div>
+                  )}
                 </div>
               ))}
               {propertyPayments.length === 0 && <p className="text-sm text-muted-foreground">Aucun paiement pour cette propriété.</p>}
@@ -94,6 +101,12 @@ export default function PropertyDetailsPage() {
                     {e.category} · ${e.amount}{e.apartmentNumber ? ` · Apt ${e.apartmentNumber}` : ""}
                   </p>
                   <p className="text-xs text-muted-foreground">{e.date?.slice(0, 10) ?? "-"}</p>
+                  {e.comment?.trim() && (
+                    <div className="mt-1">
+                      <p className="text-xs font-medium text-foreground">Commentaire:</p>
+                      <ExpandableText text={e.comment} />
+                    </div>
+                  )}
                 </div>
               ))}
               {propertyExpenses.length === 0 && <p className="text-sm text-muted-foreground">Aucune dépense pour cette propriété.</p>}
