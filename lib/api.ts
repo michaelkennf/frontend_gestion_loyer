@@ -14,6 +14,7 @@ import {
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 const TOKEN_KEY = "rent-app-token";
 const REFRESH_TOKEN_KEY = "rent-app-refresh-token";
+const REMEMBER_ME_KEY = "rent-app-remember-me";
 const AUTH_DEBUG = process.env.NEXT_PUBLIC_AUTH_DEBUG === "1" || process.env.NODE_ENV !== "production";
 const AUTH_CHANGED_EVENT = "rent-auth-changed";
 const OFFLINE_QUEUE_EVENT = "rent-offline-queue-changed";
@@ -47,17 +48,33 @@ export function onOfflineQueueChanged(callback: () => void) {
 
 export function getToken() {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem(TOKEN_KEY);
+  return localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY);
 }
 
 export function hasAuthState() {
   if (typeof window === "undefined") return false;
-  return Boolean(localStorage.getItem(TOKEN_KEY) || localStorage.getItem(REFRESH_TOKEN_KEY));
+  return Boolean(
+    localStorage.getItem(TOKEN_KEY) ||
+      localStorage.getItem(REFRESH_TOKEN_KEY) ||
+      sessionStorage.getItem(TOKEN_KEY) ||
+      sessionStorage.getItem(REFRESH_TOKEN_KEY),
+  );
 }
 
 function getRefreshToken() {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem(REFRESH_TOKEN_KEY);
+  return localStorage.getItem(REFRESH_TOKEN_KEY) || sessionStorage.getItem(REFRESH_TOKEN_KEY);
+}
+
+export function getRememberMe() {
+  if (typeof window === "undefined") return false;
+  return localStorage.getItem(REMEMBER_ME_KEY) === "1";
+}
+
+export function setRememberMe(remember: boolean) {
+  if (typeof window === "undefined") return;
+  if (remember) localStorage.setItem(REMEMBER_ME_KEY, "1");
+  else localStorage.removeItem(REMEMBER_ME_KEY);
 }
 
 function cacheDashboardData(data: unknown) {
@@ -76,21 +93,37 @@ function readCachedDashboardData<T>() {
   }
 }
 
-export function setToken(token: string | null) {
+export function setToken(token: string | null, remember = getRememberMe()) {
   if (typeof window === "undefined") return;
   if (!token) {
     localStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(TOKEN_KEY);
     document.cookie = "rent_auth=; path=/; max-age=0";
   } else {
-    localStorage.setItem(TOKEN_KEY, token);
-    document.cookie = "rent_auth=1; path=/; samesite=lax";
+    if (remember) {
+      localStorage.setItem(TOKEN_KEY, token);
+      sessionStorage.removeItem(TOKEN_KEY);
+      document.cookie = "rent_auth=1; path=/; samesite=lax; max-age=2592000";
+    } else {
+      sessionStorage.setItem(TOKEN_KEY, token);
+      localStorage.removeItem(TOKEN_KEY);
+      document.cookie = "rent_auth=1; path=/; samesite=lax";
+    }
   }
 }
 
-function setRefreshToken(token: string | null) {
+function setRefreshToken(token: string | null, remember = getRememberMe()) {
   if (typeof window === "undefined") return;
-  if (!token) localStorage.removeItem(REFRESH_TOKEN_KEY);
-  else localStorage.setItem(REFRESH_TOKEN_KEY, token);
+  if (!token) {
+    localStorage.removeItem(REFRESH_TOKEN_KEY);
+    sessionStorage.removeItem(REFRESH_TOKEN_KEY);
+  } else if (remember) {
+    localStorage.setItem(REFRESH_TOKEN_KEY, token);
+    sessionStorage.removeItem(REFRESH_TOKEN_KEY);
+  } else {
+    sessionStorage.setItem(REFRESH_TOKEN_KEY, token);
+    localStorage.removeItem(REFRESH_TOKEN_KEY);
+  }
 }
 
 function setRoleCookie(role: string | null) {
@@ -290,8 +323,9 @@ export async function loginApi(username: string, password: string) {
     method: "POST",
     body: JSON.stringify({ username, password }),
   });
-  setToken(data.token);
-  setRefreshToken(data.refreshToken);
+  const remember = getRememberMe();
+  setToken(data.token, remember);
+  setRefreshToken(data.refreshToken, remember);
   setRoleCookie(data.user.role);
   notifyAuthChanged();
   return data.user;

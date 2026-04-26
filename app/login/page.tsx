@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Building, Eye, EyeOff, LogIn } from "lucide-react";
@@ -11,11 +11,13 @@ import { login } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 const schema = z.object({
   username: z.string().min(1, "Identifiant requis"),
   password: z.string().min(1, "Mot de passe requis"),
+  rememberMe: z.boolean().optional(),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -28,13 +30,18 @@ export default function LoginPage() {
   const {
     register,
     handleSubmit,
+    control,
     formState: { errors },
-  } = useForm<FormValues>({ resolver: zodResolver(schema) });
-
+  } = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      rememberMe: true,
+    },
+  });
   async function onSubmit(values: FormValues) {
     setLoading(true);
     try {
-      const user = await login(values.username.trim(), values.password);
+      const user = await login(values.username.trim(), values.password, Boolean(values.rememberMe));
       toast.success(`Bienvenue, ${user.username} !`);
       router.push(user.role === "ADMIN" ? "/admin-users" : "/dashboard");
     } catch (error) {
@@ -129,6 +136,20 @@ export default function LoginPage() {
                     <p className="text-xs text-destructive">{errors.password.message}</p>
                   )}
                 </div>
+
+                <label className="flex items-center gap-2 text-sm text-foreground">
+                  <Controller
+                    name="rememberMe"
+                    control={control}
+                    render={({ field }) => (
+                      <Checkbox
+                        checked={Boolean(field.value)}
+                        onCheckedChange={(checked) => field.onChange(Boolean(checked))}
+                      />
+                    )}
+                  />
+                  <span>Rester connecté</span>
+                </label>
 
                 <Button type="submit" className="w-full" disabled={loading}>
                   {loading ? (
