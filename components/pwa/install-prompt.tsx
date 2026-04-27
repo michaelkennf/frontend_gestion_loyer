@@ -88,7 +88,12 @@ export function PwaInstallPrompt() {
     };
   }, [pendingInstallClick]);
 
-  const shouldShowPrompt = useMemo(() => !isInstalled && !dismissed, [dismissed, isInstalled]);
+  const shouldShowPrompt = useMemo(() => {
+    if (dismissed || isInstalled) return false;
+    if (isIos()) return true;
+    // On desktop/android, only show when the browser says install prompt is available.
+    return Boolean(deferredPrompt);
+  }, [deferredPrompt, dismissed, isInstalled]);
   const platformMessage = useMemo(() => {
     if (isIos()) {
       return "Sur iPhone/iPad: ouvrez le menu Partager puis 'Sur l'ecran d'accueil'.";
@@ -128,11 +133,6 @@ export function PwaInstallPrompt() {
             Installez l'application sur votre appareil.
           </p>
           <p className="text-xs text-muted-foreground">{platformMessage}</p>
-          {!deferredPrompt && !isIos() && (
-            <p className="text-xs text-amber-700">
-              Preparation de l'installation... le navigateur doit d'abord autoriser le prompt.
-            </p>
-          )}
           {isIos() && (
             <p className="text-xs text-muted-foreground">
               Sur iPhone/iPad, Apple ne permet pas l'installation automatique en un clic.

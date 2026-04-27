@@ -20,6 +20,14 @@ import {
 import { floorDisplayLabel } from "@/lib/utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
+type OverdueUnit = {
+  key: string;
+  label: string;
+  lastCoveredMonth: string;
+  dueMonth: string;
+  monthsLate: number;
+};
+
 function monthToIndex(month: string): number | null {
   if (!/^\d{4}-\d{2}$/.test(month)) return null;
   const [y, m] = month.split("-").map(Number);
@@ -30,6 +38,74 @@ function monthToIndex(month: string): number | null {
 function currentMonthIndex(): number {
   const d = new Date();
   return d.getFullYear() * 12 + d.getMonth();
+}
+
+function monthIndexToLabel(index: number | null): string {
+  if (index === null) return "Aucun paiement";
+  const year = Math.floor(index / 12);
+  const month = (index % 12) + 1;
+  return `${year}-${String(month).padStart(2, "0")}`;
+}
+
+function getHouseOverdueUnits(
+  h: House,
+  payments: Array<{ propertyId: string; month: string; paymentKind: "rental" | "monthly"; monthsCount?: number | null; floor?: number | null; apartmentNumber?: number | null }>,
+  nowMonth: number,
+): OverdueUnit[] {
+  const layout = h.layout ?? [];
+  const apts = layout.flatMap((lvl) => lvl.apartments.map((a) => ({ floor: lvl.floor, apartmentNumber: a.number })));
+  const housePayments = payments.filter((p) => p.propertyId === h.id);
+
+  return apts
+    .map(({ floor, apartmentNumber }) => {
+      const aptPayments = housePayments.filter((p) => p.floor === floor && p.apartmentNumber === apartmentNumber);
+      let maxCovered: number | null = null;
+      for (const p of aptPayments) {
+        const start = monthToIndex(p.month);
+        if (start === null) continue;
+        const count = p.paymentKind === "rental" ? (p.monthsCount ?? 1) : 1;
+        const end = start + Math.max(1, count) - 1;
+        if (maxCovered === null || end > maxCovered) maxCovered = end;
+      }
+      if (maxCovered !== null && maxCovered >= nowMonth) return null;
+      const dueMonth = maxCovered === null ? nowMonth : maxCovered + 1;
+      return {
+        key: `${h.id}:${floor}:${apartmentNumber}`,
+        label: `${floorDisplayLabel(floor)} · Apt ${apartmentNumber}`,
+        lastCoveredMonth: monthIndexToLabel(maxCovered),
+        dueMonth: monthIndexToLabel(dueMonth),
+        monthsLate: Math.max(1, nowMonth - dueMonth + 1),
+      } as OverdueUnit;
+    })
+    .filter((u): u is OverdueUnit => Boolean(u));
+}
+
+function getSimpleOverdueUnits(
+  propertyId: string,
+  label: string,
+  payments: Array<{ propertyId: string; month: string; paymentKind: "rental" | "monthly"; monthsCount?: number | null }>,
+  nowMonth: number,
+): OverdueUnit[] {
+  const ps = payments.filter((p) => p.propertyId === propertyId);
+  let maxCovered: number | null = null;
+  for (const p of ps) {
+    const start = monthToIndex(p.month);
+    if (start === null) continue;
+    const count = p.paymentKind === "rental" ? (p.monthsCount ?? 1) : 1;
+    const end = start + Math.max(1, count) - 1;
+    if (maxCovered === null || end > maxCovered) maxCovered = end;
+  }
+  if (maxCovered !== null && maxCovered >= nowMonth) return [];
+  const dueMonth = maxCovered === null ? nowMonth : maxCovered + 1;
+  return [
+    {
+      key: propertyId,
+      label,
+      lastCoveredMonth: monthIndexToLabel(maxCovered),
+      dueMonth: monthIndexToLabel(dueMonth),
+      monthsLate: Math.max(1, nowMonth - dueMonth + 1),
+    },
+  ];
 }
 
 function HousePropertyCard({
@@ -145,39 +221,16 @@ export default function PropertiesPage() {
   }
 
   const nowMonth = currentMonthIndex();
-  function houseIsOverdue(h: House): boolean {
-    const layout = h.layout ?? [];
-    const apts = layout.flatMap((lvl) => lvl.apartments.map((a) => ({ floor: lvl.floor, apartmentNumber: a.number })));
-    if (apts.length === 0) return false;
+  const houseOverdueMap = new Map(houses.map((h) => [h.id, getHouseOverdueUnits(h, payments, nowMonth)]));
+  const studioOverdueMap = new Map(studios.map((s) => [s.id, getSimpleOverdueUnits(s.id, "Studio", payments, nowMonth)]));
+  const landOverdueMap = new Map(lands.map((l) => [l.id, getSimpleOverdueUnits(l.id, "Terrain", payments, nowMonth)]));
 
-    const housePayments = payments.filter((p) => p.propertyId === h.id);
-    return apts.some(({ floor, apartmentNumber }) => {
-      const aptPayments = housePayments.filter((p) => p.floor === floor && p.apartmentNumber === apartmentNumber);
-      let maxCovered: number | null = null;
-      for (const p of aptPayments) {
-        const start = monthToIndex(p.month);
-        if (start === null) continue;
-        const count = p.paymentKind === "rental" ? (p.monthsCount ?? 1) : 1;
-        const end = start + Math.max(1, count) - 1;
-        if (maxCovered === null || end > maxCovered) maxCovered = end;
-      }
-      if (maxCovered === null) return true;
-      return maxCovered < nowMonth;
-    });
+  function houseIsOverdue(h: House): boolean {
+    return (houseOverdueMap.get(h.id)?.length ?? 0) > 0;
   }
 
   function simplePropertyIsOverdue(propertyId: string): boolean {
-    const ps = payments.filter((p) => p.propertyId === propertyId);
-    let maxCovered: number | null = null;
-    for (const p of ps) {
-      const start = monthToIndex(p.month);
-      if (start === null) continue;
-      const count = p.paymentKind === "rental" ? (p.monthsCount ?? 1) : 1;
-      const end = start + Math.max(1, count) - 1;
-      if (maxCovered === null || end > maxCovered) maxCovered = end;
-    }
-    if (maxCovered === null) return true;
-    return maxCovered < nowMonth;
+    return (studioOverdueMap.get(propertyId)?.length ?? 0) > 0 || (landOverdueMap.get(propertyId)?.length ?? 0) > 0;
   }
 
   const q = searchAddress.trim().toLowerCase();

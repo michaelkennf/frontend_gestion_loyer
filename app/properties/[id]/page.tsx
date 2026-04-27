@@ -11,6 +11,20 @@ function monthLabel(month: string) {
   return month && /^\d{4}-\d{2}$/.test(month) ? month : "-";
 }
 
+function monthToIndex(month: string): number | null {
+  if (!/^\d{4}-\d{2}$/.test(month)) return null;
+  const [y, m] = month.split("-").map(Number);
+  if (!y || !m || m < 1 || m > 12) return null;
+  return y * 12 + (m - 1);
+}
+
+function monthIndexToLabel(index: number | null): string {
+  if (index === null) return "Aucun paiement";
+  const year = Math.floor(index / 12);
+  const month = (index % 12) + 1;
+  return `${year}-${String(month).padStart(2, "0")}`;
+}
+
 export default function PropertyDetailsPage() {
   const params = useParams<{ id: string }>();
   const id = params?.id;
@@ -25,6 +39,55 @@ export default function PropertyDetailsPage() {
 
   const propertyPayments = payments.filter((p) => p.propertyId === id);
   const propertyExpenses = expenses.filter((e) => e.propertyId === id);
+  const nowMonth = new Date().getFullYear() * 12 + new Date().getMonth();
+
+  const overdueUnits = house
+    ? (house.layout ?? [])
+        .flatMap((lvl) => lvl.apartments.map((a) => ({ floor: lvl.floor, apartmentNumber: a.number })))
+        .map(({ floor, apartmentNumber }) => {
+          const aptPayments = propertyPayments.filter((p) => p.floor === floor && p.apartmentNumber === apartmentNumber);
+          let maxCovered: number | null = null;
+          for (const p of aptPayments) {
+            const start = monthToIndex(p.month);
+            if (start === null) continue;
+            const count = p.paymentKind === "rental" ? (p.monthsCount ?? 1) : 1;
+            const end = start + Math.max(1, count) - 1;
+            if (maxCovered === null || end > maxCovered) maxCovered = end;
+          }
+          if (maxCovered !== null && maxCovered >= nowMonth) return null;
+          const dueMonth = maxCovered === null ? nowMonth : maxCovered + 1;
+          return {
+            key: `${floor}-${apartmentNumber}`,
+            label: `${floorDisplayLabel(floor)} · Apt ${apartmentNumber}`,
+            lastCoveredMonth: monthIndexToLabel(maxCovered),
+            firstUnpaidMonth: monthIndexToLabel(dueMonth),
+            monthsLate: Math.max(1, nowMonth - dueMonth + 1),
+          };
+        })
+        .filter((v): v is { key: string; label: string; lastCoveredMonth: string; firstUnpaidMonth: string; monthsLate: number } => Boolean(v))
+    : studio
+      ? (() => {
+          let maxCovered: number | null = null;
+          for (const p of propertyPayments) {
+            const start = monthToIndex(p.month);
+            if (start === null) continue;
+            const count = p.paymentKind === "rental" ? (p.monthsCount ?? 1) : 1;
+            const end = start + Math.max(1, count) - 1;
+            if (maxCovered === null || end > maxCovered) maxCovered = end;
+          }
+          if (maxCovered !== null && maxCovered >= nowMonth) return [];
+          const dueMonth = maxCovered === null ? nowMonth : maxCovered + 1;
+          return [
+            {
+              key: "studio",
+              label: "Studio",
+              lastCoveredMonth: monthIndexToLabel(maxCovered),
+              firstUnpaidMonth: monthIndexToLabel(dueMonth),
+              monthsLate: Math.max(1, nowMonth - dueMonth + 1),
+            },
+          ];
+        })()
+      : [];
 
   return (
     <DashboardLayout title={propertyLabel} description={`Détails · ${propertyTypeLabel}`}>
@@ -66,6 +129,22 @@ export default function PropertyDetailsPage() {
             </div>
           )}
         </div>
+
+        {overdueUnits.length > 0 && (
+          <div className="rounded-xl border border-destructive/40 bg-destructive/5 p-4">
+            <h3 className="mb-3 text-sm font-semibold text-destructive">Appartements / unité(s) en retard</h3>
+            <div className="space-y-2">
+              {overdueUnits.map((u) => (
+                <div key={u.key} className="rounded-md border border-destructive/40 bg-background p-3">
+                  <p className="text-sm font-medium text-destructive">{u.label}</p>
+                  <p className="text-xs text-foreground">Dernier mois couvert: {u.lastCoveredMonth}</p>
+                  <p className="text-xs text-foreground">Premier mois impayé: {u.firstUnpaidMonth}</p>
+                  <p className="text-xs font-medium text-destructive">Retard: {u.monthsLate} mois</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <div className="rounded-xl border border-border bg-card p-4">
