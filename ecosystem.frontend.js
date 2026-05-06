@@ -9,9 +9,9 @@ module.exports = {
       name: "gestionloyer-frontend",
       cwd: frontendDir,
       script: "npm",
-      args: "run dev -- --port 5013 --hostname 0.0.0.0",
+      args: "run start -- --port 5013 --hostname 0.0.0.0",
       env: {
-        NODE_ENV: "development",
+        NODE_ENV: "production",
         NEXT_PUBLIC_API_URL: "https://api.gestionloyer.agishalabs.tech/api",
       },
       watch: false,

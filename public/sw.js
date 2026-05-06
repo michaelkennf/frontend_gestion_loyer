@@ -1,10 +1,10 @@
-const CACHE_NAME = "locapro-static-v3";
-const APP_SHELL = ["/", "/login", "/offline.html", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png"];
+const CACHE_NAME = "locapro-static-v4";
+const APP_SHELL = ["/", "/login", "/offline.html", "/manifest.webmanifest", "/icon-192.svg", "/icon-512.svg"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(APP_SHELL);
+      return Promise.allSettled(APP_SHELL.map((url) => cache.add(url)));
     }),
   );
   self.skipWaiting();

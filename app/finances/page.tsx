@@ -334,9 +334,16 @@ export default function FinancesPage() {
               <div key={p.id} className="rounded-md border border-border p-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-medium">{p.propertyLabel}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-medium">{p.propertyLabel}</p>
+                      {(p.remainingDue ?? 0) > 0 && (
+                        <span className="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                          Reste dû : ${Number.isInteger(p.remainingDue ?? 0) ? (p.remainingDue ?? 0) : (p.remainingDue ?? 0).toFixed(2)}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-muted-foreground">
-                      {p.paymentKind === "rental" ? `${p.monthsCount ?? 1} mois` : p.month} · ${p.amount} · {p.paymentKind === "rental" ? "Loyer locatif" : "Paiement mensuel"}
+                      {p.paymentKind === "rental" ? `${p.monthsCount ?? 1} mois` : p.month} · <span className="font-medium text-foreground">${p.amount}</span>{p.expectedAmount != null && p.expectedAmount !== p.amount ? ` / ${p.expectedAmount}` : ""} · {p.paymentKind === "rental" ? "Loyer locatif" : "Paiement mensuel"}
                       {p.propertyType === "land"
                         ? " · Terrain"
                         : (p.propertyType === "house" || p.propertyType === "building") && p.apartmentNumber

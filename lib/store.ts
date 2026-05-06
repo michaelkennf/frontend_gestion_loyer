@@ -55,6 +55,10 @@ export type Payment = {
   month: string;
   monthsCount?: number | null;
   amount: number;
+  /** Loyer de référence attendu. Null pour les anciens enregistrements. */
+  expectedAmount?: number | null;
+  /** Montant restant dû (expectedAmount - amount), 0 si paiement complet. */
+  remainingDue?: number;
   date: string;
   notes?: string;
   floor?: number | null;

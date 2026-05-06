@@ -83,6 +83,7 @@ export default function RegisterPaymentPage() {
   const propertyType = watch("propertyType");
   const propertyId = watch("propertyId");
   const floor = watch("floor");
+  const watchedAmount = watch("amount");
   const propertyList =
     propertyType === "house" || propertyType === "building"
       ? houses
@@ -103,17 +104,35 @@ export default function RegisterPaymentPage() {
     if (propertyType === "land" && propertyId) {
       const l = lands.find((x) => x.id === propertyId);
       if (l) setValue("amount", l.monthlyRent);
+    } else if (propertyType === "studio" && propertyId) {
+      const s = studios.find((x) => x.id === propertyId);
+      if (s) setValue("amount", s.monthlyRent);
     }
-  }, [propertyType, propertyId, lands, setValue]);
+  }, [propertyType, propertyId, lands, studios, setValue]);
+
+  const watchedApartmentNumber = watch("apartmentNumber");
+  useEffect(() => {
+    if ((propertyType === "house" || propertyType === "building") && selectedLevel && watchedApartmentNumber) {
+      const apt = selectedLevel.apartments.find((a) => a.number === watchedApartmentNumber);
+      if (apt) setValue("amount", apt.rentPrice);
+    }
+  }, [propertyType, selectedLevel, watchedApartmentNumber, setValue]);
+
+  const referenceRent: number | null = (() => {
+    if (propertyType === "house" || propertyType === "building") {
+      const apt = selectedLevel?.apartments.find((a) => a.number === watchedApartmentNumber);
+      return apt?.rentPrice ?? null;
+    }
+    if (propertyType === "studio") return studios.find((s) => s.id === propertyId)?.monthlyRent ?? null;
+    if (propertyType === "land") return lands.find((l) => l.id === propertyId)?.monthlyRent ?? null;
+    return null;
+  })();
+  const remainingDue = referenceRent !== null && watchedAmount !== undefined && watchedAmount > 0
+    ? Math.max(0, Math.round((referenceRent - watchedAmount) * 100) / 100)
+    : 0;
 
   async function onSubmit(values: FormValues) {
     if (user?.role !== "MANAGER") return toast.error("Action réservée au gestionnaire.");
-    const selectedApartmentRent =
-      values.propertyType === "house" || values.propertyType === "building"
-        ? selectedHouse?.layout
-            ?.find((l) => l.floor === values.floor)
-            ?.apartments.find((a) => a.number === values.apartmentNumber)?.rentPrice
-        : undefined;
 
     await addPaymentApi({
       propertyId: values.propertyId,
@@ -121,10 +140,7 @@ export default function RegisterPaymentPage() {
       paymentKind: "monthly",
       tenantName: values.tenantName,
       month: values.month,
-      amount:
-        (values.propertyType === "house" || values.propertyType === "building") && selectedApartmentRent
-          ? selectedApartmentRent
-          : values.amount ?? 0,
+      amount: values.amount ?? 0,
       notes: values.notes,
       floor: values.propertyType === "house" || values.propertyType === "building" ? values.floor : undefined,
       apartmentNumber: values.propertyType === "house" || values.propertyType === "building" ? values.apartmentNumber : undefined,
@@ -323,20 +339,19 @@ export default function RegisterPaymentPage() {
                         const raw = e.target.value;
                         field.onChange(raw === "" ? undefined : Number(raw));
                       }}
-                      readOnly={propertyType === "house" || propertyType === "building"}
                       className={errors.amount ? "border-destructive" : ""}
                     />
                   )}
                 />
-                {(propertyType === "house" || propertyType === "building") && (
+                {referenceRent !== null && (
                   <p className="text-xs text-muted-foreground">
-                    Le montant est défini automatiquement selon l'appartement choisi.
+                    Loyer de référence : <span className="font-medium text-foreground">${referenceRent}</span>
                   </p>
                 )}
-                {propertyType === "land" && (
-                  <p className="text-xs text-muted-foreground">
-                    Le montant est prérempli avec le prix de location du terrain ; vous pouvez l&apos;ajuster.
-                  </p>
+                {remainingDue > 0 && (
+                  <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                    Paiement partiel — Reste dû : <span className="font-semibold">${Number.isInteger(remainingDue) ? remainingDue : remainingDue.toFixed(2)}</span>
+                  </div>
                 )}
                 {errors.amount && (
                   <p className="text-xs text-destructive">{errors.amount.message}</p>
