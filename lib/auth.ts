@@ -1,6 +1,6 @@
 "use client";
 
-import { clearAuthState, getRememberMe, loginApi, logoutApi, meApi, setRememberMe } from "@/lib/api";
+import { clearAuthState, getRememberMe, loginApi, logoutApi, meApi, notifyAuthChanged, setRememberMe } from "@/lib/api";
 import type { SessionUser } from "@/lib/store";
 
 const SESSION_KEY = "rent-app-session";
@@ -8,7 +8,10 @@ const SESSION_KEY = "rent-app-session";
 export async function login(username: string, password: string, rememberMe = false): Promise<SessionUser> {
   setRememberMe(rememberMe);
   const user = await loginApi(username, password);
+  // Write SESSION_KEY BEFORE notifying listeners so that AppProvider.refresh()
+  // finds getSession() populated and can show stale cached data immediately.
   localStorage.setItem(SESSION_KEY, JSON.stringify(user));
+  notifyAuthChanged();
   return user;
 }
 

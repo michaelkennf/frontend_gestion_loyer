@@ -20,7 +20,7 @@ const AUTH_CHANGED_EVENT = "rent-auth-changed";
 const OFFLINE_QUEUE_EVENT = "rent-offline-queue-changed";
 const DASHBOARD_CACHE_KEY = "rent-dashboard-cache-v1";
 
-function notifyAuthChanged() {
+export function notifyAuthChanged() {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new Event(AUTH_CHANGED_EVENT));
 }
@@ -352,7 +352,10 @@ export async function loginApi(username: string, password: string) {
   setToken(data.token, remember);
   setRefreshToken(data.refreshToken, remember);
   setRoleCookie(data.user.role);
-  notifyAuthChanged();
+  // notifyAuthChanged() is intentionally NOT called here.
+  // It is called by auth.ts/login() AFTER SESSION_KEY is written so that
+  // AppProvider.refresh() can immediately find both the cached session and
+  // cached dashboard data (stale-while-revalidate).
   return data.user;
 }
 

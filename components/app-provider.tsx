@@ -77,10 +77,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
 
     // Stale-while-revalidate: show cached data immediately so the UI is never blank.
+    // We show cached dashboard data even without a cached session because notifyAuthChanged()
+    // may fire before SESSION_KEY is written (e.g. on a token refresh). The authoritative
+    // user + fresh data are always set once the parallel requests below complete.
     const cached = getCachedDashboard<DashboardData>();
     const cachedSession = getSession();
-    if (cached && cachedSession) {
-      setState(applyDashboard(cachedSession, cached));
+    if (cached) {
+      setState(applyDashboard(cachedSession ?? { id: "", username: "", fullName: "", role: "MANAGER", forceReset: false }, cached));
       setLoading(false); // Remove spinner — user sees real data instantly.
     } else {
       setLoading(true);
