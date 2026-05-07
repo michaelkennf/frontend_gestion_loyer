@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { AppContext, AppState, House, Studio, Land, Payment, Expense, SessionUser, Supplier, RentalDeposit } from "@/lib/store";
 import {
   getDashboardApi,
+  getCachedDashboard,
   addHouseApi,
   addStudioApi,
   addLandApi,
@@ -36,35 +37,27 @@ type State = {
 const initialState: State = { user: null, houses: [], studios: [], lands: [], suppliers: [], payments: [], expenses: [], rentalDeposits: [] };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<State>({ ...initialState, user: getSession() });
+  // Start with no user: wait for refreshSession() to confirm before showing anything.
+  // Showing getSession() immediately caused a flash (user visible < 1s then redirected to login
+  // when the access token was expired and a race condition on rotating refresh tokens occurred).
+  const [state, setState] = useState<State>(initialState);
   const [loading, setLoading] = useState(true);
   const [isOnline, setIsOnline] = useState<boolean>(typeof window === "undefined" ? true : window.navigator.onLine);
   const [pendingSyncCount, setPendingSyncCount] = useState(0);
   const [syncingOfflineQueue, setSyncingOfflineQueue] = useState(false);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    if (!hasAuthState() && !getSession()) {
-      setState(initialState);
-      setLoading(false);
-      return;
-    }
-    const user = await refreshSession();
-    if (!user) {
-      setState(initialState);
-      setLoading(false);
-      return;
-    }
-    const data = await getDashboardApi() as {
-      houses: House[];
-      studios: Studio[];
-      lands?: Land[];
-      suppliers?: Supplier[];
-      payments: Payment[];
-      expenses: Expense[];
-      rentalDeposits?: RentalDeposit[];
-    };
-    setState({
+  type DashboardData = {
+    houses: House[];
+    studios: Studio[];
+    lands?: Land[];
+    suppliers?: Supplier[];
+    payments: Payment[];
+    expenses: Expense[];
+    rentalDeposits?: RentalDeposit[];
+  };
+
+  function applyDashboard(user: SessionUser, data: DashboardData): State {
+    return {
       user,
       houses: data.houses,
       studios: data.studios,
@@ -73,7 +66,45 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       payments: data.payments,
       expenses: data.expenses,
       rentalDeposits: data.rentalDeposits ?? [],
-    });
+    };
+  }
+
+  const refresh = useCallback(async () => {
+    if (!hasAuthState() && !getSession()) {
+      setState(initialState);
+      setLoading(false);
+      return;
+    }
+
+    // Stale-while-revalidate: show cached data immediately so the UI is never blank.
+    const cached = getCachedDashboard<DashboardData>();
+    const cachedSession = getSession();
+    if (cached && cachedSession) {
+      setState(applyDashboard(cachedSession, cached));
+      setLoading(false); // Remove spinner — user sees real data instantly.
+    } else {
+      setLoading(true);
+    }
+
+    // Verify auth and refresh dashboard data in parallel.
+    const [userResult, dataResult] = await Promise.allSettled([
+      refreshSession(),
+      getDashboardApi() as Promise<DashboardData>,
+    ]);
+
+    const user = userResult.status === "fulfilled" ? userResult.value : null;
+    if (!user) {
+      setState(initialState);
+      setLoading(false);
+      return;
+    }
+
+    if (dataResult.status === "fulfilled") {
+      setState(applyDashboard(user, dataResult.value));
+    } else {
+      // Network failed but auth is valid — keep cached data with refreshed user info.
+      setState((prev) => ({ ...prev, user }));
+    }
     setLoading(false);
   }, []);
 

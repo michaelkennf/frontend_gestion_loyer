@@ -93,6 +93,11 @@ function readCachedDashboardData<T>() {
   }
 }
 
+/** Expose cached dashboard for stale-while-revalidate in AppProvider. */
+export function getCachedDashboard<T>() {
+  return readCachedDashboardData<T>();
+}
+
 export function setToken(token: string | null, remember = getRememberMe()) {
   if (typeof window === "undefined") return;
   if (!token) {
@@ -128,8 +133,12 @@ function setRefreshToken(token: string | null, remember = getRememberMe()) {
 
 function setRoleCookie(role: string | null) {
   if (typeof window === "undefined") return;
-  if (!role) document.cookie = "rent_role=; path=/; max-age=0";
-  else document.cookie = `rent_role=${role}; path=/; samesite=lax`;
+  if (!role) {
+    document.cookie = "rent_role=; path=/; max-age=0";
+  } else {
+    const maxAge = getRememberMe() ? "; max-age=2592000" : "";
+    document.cookie = `rent_role=${role}; path=/; samesite=lax${maxAge}`;
+  }
 }
 
 export function clearAuthState() {
@@ -205,6 +214,37 @@ async function enqueueOfflineMutation(path: string, method: OfflineMutation["met
   return mutationId;
 }
 
+// Single-flight mutex: guarantees only one /auth/refresh request runs at a time.
+// If a refresh is already in progress, concurrent 401s wait for the same promise
+// instead of each firing their own refresh (which would invalidate rotating tokens).
+let _refreshInFlight: Promise<boolean> | null = null;
+
+async function refreshTokenOnce(): Promise<boolean> {
+  if (_refreshInFlight) return _refreshInFlight;
+  _refreshInFlight = (async () => {
+    try {
+      const rt = getRefreshToken();
+      if (!rt) return false;
+      const res = await fetch(`${API_BASE}/auth/refresh`, {
+        method: "POST",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refreshToken: rt }),
+      });
+      if (!res.ok) return false;
+      const data = await res.json() as { token: string; refreshToken: string };
+      setToken(data.token);
+      setRefreshToken(data.refreshToken);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      _refreshInFlight = null;
+    }
+  })();
+  return _refreshInFlight;
+}
+
 async function rawFetch(path: string, init?: RequestInit, idempotencyKey?: string) {
   const token = getToken();
   const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData;
@@ -248,24 +288,9 @@ async function request<T>(path: string, init?: RequestInit, retry = true): Promi
   }
 
   if (res.status === 401 && retry && path !== "/auth/login") {
-    const refreshToken = getRefreshToken();
-    if (refreshToken) {
-      try {
-        const refreshed = await fetch(`${API_BASE}/auth/refresh`, {
-          method: "POST",
-          cache: "no-store",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ refreshToken }),
-        });
-        if (refreshed.ok) {
-          const data = await refreshed.json() as { token: string; refreshToken: string };
-          setToken(data.token);
-          setRefreshToken(data.refreshToken);
-          return request<T>(path, init, false);
-        }
-      } catch {
-        // noop
-      }
+    if (getRefreshToken()) {
+      const refreshed = await refreshTokenOnce();
+      if (refreshed) return request<T>(path, init, false);
     }
     clearAuthState();
   }
